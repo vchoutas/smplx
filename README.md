@@ -8,6 +8,16 @@
   * [Citation](#citation)
   * [Contact](#contact)
 
+## Description
+
+SMPL-X (SMPL eXpressive) is a unified body model with shape parameters trained jointly for the
+face, hands and body. SMPL-X uses standard vertex based linear blend skinning with learned corrective blend
+shapes, has N = 10, 475 vertices and K = 54 joints,
+which includes joints for the neck, jaw, eyeballs and fingers. 
+SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameter, β the shape parameter and
+ψ the expression parameter.
+
+
 ## Installation
 
 ## Example
