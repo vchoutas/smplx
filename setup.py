@@ -1,12 +1,7 @@
 import io
 import os
 
-from setuptools import find_packages, setup, Command
-
-import subprocess
-import shutil
-import torch
-from torch.utils.cpp_extension import BuildExtension, CUDAExtension
+from setuptools import setup
 
 # Package meta-data.
 NAME = 'smplx'
@@ -14,8 +9,8 @@ DESCRIPTION = 'PyTorch module for loading the SMPLX body model'
 URL = 'http://smpl-x.is.tuebingen.mpg.de'
 EMAIL = 'vassilis.choutas@tuebingen.mpg.de'
 AUTHOR = 'Vassilis Choutas'
-REQUIRES_PYTHON = '>=2.7.0'
-VERSION = '0.1.0'
+REQUIRES_PYTHON = '>=3.7.0'
+VERSION = '0.1.3'
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -23,6 +18,7 @@ try:
     FileNotFoundError
 except NameError:
     FileNotFoundError = IOError
+
 # Import the README and use it as the long-description.
 # Note: this will only work if 'README.md' is present in your MANIFEST.in file!
 try:
@@ -48,5 +44,12 @@ setup(name=NAME,
       author_email=EMAIL,
       python_requires=REQUIRES_PYTHON,
       url=URL,
-      packages=['smplx'],
-      cmdclass={'build_ext': BuildExtension})
+      install_requires=[
+          'numpy>=1.16.2',
+          'torch>=1.0.1.post2',
+          'torchgeometry>=0.1.2'
+      ],
+      extras_require={
+          'render': ['pyrender>=0.1.23', 'trimesh>=2.37.6', 'shapely']
+      },
+      packages=['smplx'])
