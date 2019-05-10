@@ -68,7 +68,7 @@ class SMPL(nn.Module):
 
     NUM_JOINTS = 23
     NUM_BODY_JOINTS = 23
-    SHAPE_SPACE_DIM = 300
+    NUM_BETAS = 10
 
     def __init__(self, model_folder, data_struct=None,
                  create_betas=True,
@@ -79,7 +79,7 @@ class SMPL(nn.Module):
                  body_pose=None,
                  create_transl=True,
                  transl=None,
-                 dtype=torch.float32, num_betas=10,
+                 dtype=torch.float32,
                  batch_size=1,
                  joint_mapper=None, gender='neutral',
                  vertex_ids=None,
@@ -90,7 +90,6 @@ class SMPL(nn.Module):
         '''
 
         self.gender = gender
-        self.num_betas = num_betas
 
         if data_struct is None:
             model_fn = 'SMPL_{}.{ext}'.format(gender.upper(), ext='pkl')
@@ -121,7 +120,7 @@ class SMPL(nn.Module):
 
         if create_betas:
             if betas is None:
-                default_betas = torch.zeros([batch_size, num_betas],
+                default_betas = torch.zeros([batch_size, self.NUM_BETAS],
                                             dtype=dtype)
             else:
                 if 'torch.Tensor' in str(type(betas)):
@@ -181,11 +180,8 @@ class SMPL(nn.Module):
                              to_tensor(to_np(data_struct.v_template),
                                        dtype=dtype))
 
-        # Sanity check to ensure that the betas don't go in the expression
-        # space
-        num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
         # The shape components
-        shapedirs = data_struct.shapedirs[:, :, :num_betas]
+        shapedirs = data_struct.shapedirs
         # The shape components
         self.register_buffer(
             'shapedirs',
@@ -231,10 +227,10 @@ class SMPL(nn.Module):
         return self.faces.shape[0]
 
     def extra_repr(self):
-        return 'Number of betas: {}'.format(self.num_betas)
+        return 'Number of betas: {}'.format(self.NUM_BETAS)
 
     def forward(self, betas=None, body_pose=None, global_orient=None,
-                transl=None, get_skin=True, return_full_pose=False, **kwargs):
+                transl=None, return_verts=True, return_full_pose=False, **kwargs):
         ''' Forward pass for the SMPL model
 
             Parameters
@@ -259,7 +255,7 @@ class SMPL(nn.Module):
                 instead. For example, it can used if the translation
                 `transl` is predicted from some external model.
                 (default=None)
-            get_skin: bool, optional
+            return_verts: bool, optional
                 Return the vertices. (default=True)
             return_full_pose: bool, optional
                 Returns the full axis-angle pose vector (default=False)
@@ -298,7 +294,7 @@ class SMPL(nn.Module):
             joints += transl.unsqueeze(dim=1)
             vertices += transl.unsqueeze(dim=1)
 
-        output = ModelOutput(vertices=vertices if get_skin else None,
+        output = ModelOutput(vertices=vertices if return_verts else None,
                              global_orient=global_orient,
                              body_pose=body_pose,
                              joints=joints,
@@ -473,7 +469,7 @@ class SMPLH(SMPL):
 
     def forward(self, betas=None, global_orient=None, body_pose=None,
                 left_hand_pose=None, right_hand_pose=None, transl=None,
-                get_skin=True, return_full_pose=False,
+                return_verts=True, return_full_pose=False,
                 **kwargs):
         '''
         '''
@@ -519,7 +515,7 @@ class SMPLH(SMPL):
             joints += transl.unsqueeze(dim=1)
             vertices += transl.unsqueeze(dim=1)
 
-        output = ModelOutput(vertices=vertices if get_skin else None,
+        output = ModelOutput(vertices=vertices if return_verts else None,
                              joints=joints,
                              betas=self.betas,
                              global_orient=global_orient,
@@ -544,8 +540,7 @@ class SMPLX(SMPLH):
     NUM_HAND_JOINTS = 15
     NUM_FACE_JOINTS = 3
     NUM_JOINTS = NUM_BODY_JOINTS + 2 * NUM_HAND_JOINTS + NUM_FACE_JOINTS
-    SHAPE_SPACE_DIM = 300
-    EXPRESSION_SPACE_DIM = 100
+    NUM_EXPR_COEFFS = 10
     NECK_IDX = 12
 
     def __init__(self, model_folder,
@@ -553,7 +548,7 @@ class SMPLX(SMPLH):
                  create_jaw_pose=True, jaw_pose=None,
                  create_leye_pose=True, leye_pose=None,
                  create_reye_pose=True, reye_pose=None,
-                 num_expression_coeffs=10, use_face_contour=False,
+                 use_face_contour=False,
                  batch_size=1, gender='neutral',
                  dtype=torch.float32,
                  ext='npz',
@@ -589,9 +584,6 @@ class SMPLX(SMPLH):
             reye_pose: torch.tensor, optional, Bx10
                 The default value for the right eye pose variable.
                 (default = None)
-            num_expression_coeffs: int, optional
-                The number of expression coefficients to use.
-                (default = 10)
             use_face_contour: bool, optional
                 Whether to compute the keypoints that form the facial contour
             batch_size: int, optional
@@ -601,7 +593,6 @@ class SMPLX(SMPLH):
             dtype: torch.dtype
                 The data type for the created variables
         '''
-        self.num_expression_coeffs = num_expression_coeffs
 
         # Load the model
         model_fn = 'SMPLX_{}.{ext}'.format(gender.upper(), ext=ext)
@@ -686,19 +677,12 @@ class SMPLX(SMPLH):
         if create_expression:
             if expression is None:
                 default_expression = torch.zeros(
-                    [batch_size, num_expression_coeffs], dtype=dtype)
+                    [batch_size, self.NUM_EXPR_COEFFS], dtype=dtype)
             else:
                 default_expression = torch.tensor(expression, dtype=dtype)
             expression_param = nn.Parameter(default_expression,
                                             requires_grad=True)
             self.register_parameter('expression', expression_param)
-
-        expr_start_idx = self.SHAPE_SPACE_DIM
-        expr_end_idx = self.SHAPE_SPACE_DIM + num_expression_coeffs
-        expr_dirs = data_struct.shapedirs[:, :,
-                                          expr_start_idx:expr_end_idx]
-        self.register_buffer(
-            'expr_dirs', to_tensor(to_np(expr_dirs), dtype=dtype))
 
     def create_mean_pose(self, data_struct, flat_hand_mean):
         # Create the array for the mean pose. If flat_hand is false, then use
@@ -722,14 +706,14 @@ class SMPLX(SMPLH):
         msg = super(SMPLX, self).extra_repr()
         msg += '\nGender: {}'.format(self.gender.title())
         msg += '\nExpression Coefficients: {}'.format(
-            self.num_expression_coeffs)
+            self.NUM_EXPR_COEFFS)
         msg += '\nUse face contour: {}'.format(self.use_face_contour)
         return msg
 
     def forward(self, betas=None, global_orient=None, body_pose=None,
                 left_hand_pose=None, right_hand_pose=None, transl=None,
                 expression=None, jaw_pose=None, leye_pose=None, reye_pose=None,
-                get_skin=True, return_full_pose=False, **kwargs):
+                return_verts=True, return_full_pose=False, **kwargs):
         '''
         Forward pass for the SMPLX model
 
@@ -771,7 +755,7 @@ class SMPLX(SMPLH):
                 instead. For example, it can used if the translation
                 `transl` is predicted from some external model.
                 (default=None)
-            get_skin: bool, optional
+            return_verts: bool, optional
                 Return the vertices. (default=True)
             return_full_pose: bool, optional
                 Returns the full axis-angle pose vector (default=False)
@@ -824,10 +808,8 @@ class SMPLX(SMPLH):
             [betas.expand(int(batch_size / betas.shape[0]), -1), expression],
             dim=-1)
 
-        shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
-
         vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               shapedirs, self.posedirs,
+                               self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
                                self.lbs_weights,
                                num_joints=self.NUM_JOINTS,
@@ -863,7 +845,7 @@ class SMPLX(SMPLH):
             joints += transl.unsqueeze(dim=1)
             vertices += transl.unsqueeze(dim=1)
 
-        output = ModelOutput(vertices=vertices if get_skin else None,
+        output = ModelOutput(vertices=vertices if return_verts else None,
                              joints=joints,
                              betas=betas,
                              expression=expression,
