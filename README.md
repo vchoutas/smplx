@@ -1,6 +1,7 @@
 ## SMPL-X:  A new, unified, 3D model of the human body 
 
 [[Paper Page](https://smpl-x.is.tue.mpg.de/)] [[Paper](https://ps.is.tuebingen.mpg.de/uploads_file/attachment/attachment/497/SMPL-X.pdf)]
+[[Supp. Mat.](https://ps.is.tuebingen.mpg.de/uploads_file/attachment/attachment/498/SMPL-X-supp.pdf)]
 
 ## Table of Contents
   * [Installation](#installation)
