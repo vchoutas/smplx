@@ -10,7 +10,7 @@ URL = 'http://smpl-x.is.tuebingen.mpg.de'
 EMAIL = 'vassilis.choutas@tuebingen.mpg.de'
 AUTHOR = 'Vassilis Choutas'
 REQUIRES_PYTHON = '>=3.7.0'
-VERSION = '0.1.3'
+VERSION = '0.1.5'
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -35,6 +35,8 @@ if not VERSION:
 else:
     about['__version__'] = VERSION
 
+render_reqs = ['pyrender>=0.1.23', 'trimesh>=2.37.6', 'shapely']
+
 setup(name=NAME,
       version=about['__version__'],
       description=DESCRIPTION,
@@ -50,6 +52,7 @@ setup(name=NAME,
           'torchgeometry>=0.1.2'
       ],
       extras_require={
-          'render': ['pyrender>=0.1.23', 'trimesh>=2.37.6', 'shapely']
+          'render': render_reqs,
+          'all': render_reqs
       },
       packages=['smplx'])
