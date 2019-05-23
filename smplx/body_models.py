@@ -325,6 +325,7 @@ class SMPLH(SMPL):
                  dtype=torch.float32,
                  vertex_ids=None,
                  use_compressed=True,
+                 ext='pkl',
                  **kwargs):
         '''
         SMPLH model constructor
@@ -369,7 +370,7 @@ class SMPLH(SMPL):
         # If no data structure is passed, then load the data from the given
         # model folder
         if data_struct is None:
-            model_fn = 'SMPLH_{}.{ext}'.format(gender.upper(), 'pkl')
+            model_fn = 'SMPLH_{}.{ext}'.format(gender.upper(), ext=ext)
             smplh_path = os.path.join(model_folder, model_fn)
 
             with open(smplh_path, 'rb') as smplh_file:
@@ -382,7 +383,7 @@ class SMPLH(SMPL):
         super(SMPLH, self).__init__(
             model_folder=model_folder, data_struct=data_struct,
             batch_size=batch_size, vertex_ids=vertex_ids, gender=gender,
-            use_compressed=use_compressed, dtype=dtype, **kwargs)
+            use_compressed=use_compressed, dtype=dtype, ext=ext, **kwargs)
 
         self.use_pca = use_pca
         self.num_pca_comps = num_pca_comps
@@ -614,7 +615,7 @@ class SMPLX(SMPLH):
             dtype=dtype,
             batch_size=batch_size,
             vertex_ids=VERTEX_IDS['smplx'],
-            gender=gender,
+            gender=gender, ext=ext,
             **kwargs)
 
         lmk_faces_idx = data_struct.lmk_faces_idx
