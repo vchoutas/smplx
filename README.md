@@ -3,6 +3,8 @@
 [[Paper Page](https://smpl-x.is.tue.mpg.de/)] [[Paper](https://ps.is.tuebingen.mpg.de/uploads_file/attachment/attachment/497/SMPL-X.pdf)]
 [[Supp. Mat.](https://ps.is.tuebingen.mpg.de/uploads_file/attachment/attachment/498/SMPL-X-supp.pdf)]
 
+![SMPL-X Examples](./images/teaser_fig.png)
+
 ## Table of Contents
   * [Installation](#installation)
   * [Dowloading the model](#downloading-the-model)
@@ -10,7 +12,7 @@
   * [Citation](#citation)
   * [Contact](#contact)
 
-## Disclaimer:
+## Disclaimer
 
 The original images used for the figures 1 and 2 of the paper can be found in this link. 
 The images in the paper are used under license from gettyimages.com.
@@ -38,7 +40,7 @@ To install the model simply you can:
 2. Clone this repository and install it using the *setup.py* script: 
 ```Shell
 git clone https://github.com/vchoutas/smplx
-python setup.py install`
+python setup.py install
 ```
 
 ## Downloading the model
@@ -56,6 +58,8 @@ script to visualize the results. For this step you have to install the [pyrender
 ![SMPL-X Examples](./images/example.png)
 
 ## Citation
+
+If you find this code useful in your research then please cite:
 
 ```
 @inproceedings{SMPL-X:2019,
