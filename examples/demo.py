@@ -11,11 +11,12 @@ import trimesh
 import smplx
 
 
-def main(model_folder, gender='neutral', plot_joints=False,
+def main(model_folder, model_type='smplx',
+         gender='neutral', plot_joints=False,
          use_face_contour=False):
 
-    model = smplx.SMPLX(model_folder, ext='pkl', gender=gender,
-                        use_face_contour=use_face_contour)
+    model = smplx.create(model_folder, model_type=model_type,
+                         gender=gender, use_face_contour=use_face_contour)
     print(model)
 
     betas = torch.randn([1, 10], dtype=torch.float32)
@@ -54,6 +55,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--model-folder', required=True, type=str,
                         help='The path to the model folder')
+    parser.add_argument('--model-type', default='smplx', type=str,
+                        choices=['smpl', 'smplh', 'smplx'],
+                        help='The type of model to load')
     parser.add_argument('--gender', type=str, default='neutral',
                         help='The gender of the model')
     parser.add_argument('--plot-joints', default=False,
@@ -66,9 +70,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     model_folder = osp.expanduser(osp.expandvars(args.model_folder))
+    model_type = args.model_type
     plot_joints = args.plot_joints
     use_face_contour = args.use_face_contour
     gender = args.gender
 
-    main(model_folder, gender=gender, plot_joints=plot_joints,
+    main(model_folder, model_type, gender=gender, plot_joints=plot_joints,
          use_face_contour=use_face_contour)
