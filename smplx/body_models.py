@@ -825,9 +825,11 @@ class SMPLX(SMPLH):
                 self.dynamic_lmk_bary_coords,
                 self.neck_kin_chain, dtype=self.dtype)
 
-            lmk_faces_idx = torch.cat([lmk_faces_idx, dyn_lmk_faces_idx], 1)
+            lmk_faces_idx = torch.cat([lmk_faces_idx.expand(batch_size, -1),
+                                       dyn_lmk_faces_idx], 1)
             lmk_bary_coords = torch.cat(
-                [lmk_bary_coords, dyn_lmk_bary_coords], 1)
+                [lmk_bary_coords.expand(batch_size, -1, -1),
+                 dyn_lmk_bary_coords], 1)
 
         landmarks = vertices2landmarks(vertices, self.faces_tensor,
                                        lmk_faces_idx,

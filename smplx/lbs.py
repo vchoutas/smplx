@@ -30,6 +30,40 @@ from .utils import rot_mat_to_euler
 def find_dynamic_lmk_idx_and_bcoords(vertices, pose, dynamic_lmk_faces_idx,
                                      dynamic_lmk_b_coords,
                                      neck_kin_chain, dtype=torch.float32):
+    ''' Compute the faces, barycentric coordinates for the dynamic landmarks
+
+
+        To do so, we first compute the rotation of the neck around the y-axis
+        and then use a pre-computed look-up table to find the faces and the
+        barycentric coordinates that will be used.
+
+        Special thanks to Soubhik Sanyal (soubhik.sanyal@tuebingen.mpg.de)
+        for providing the original TensorFlow implementation and for the LUT.
+
+        Parameters
+        ----------
+        vertices: torch.tensor BxVx3, dtype = torch.float32
+            The tensor of input vertices
+        pose: torch.tensor Bx(Jx3), dtype = torch.float32
+            The current pose of the body model
+        dynamic_lmk_faces_idx: torch.tensor L, dtype = torch.long
+            The look-up table from neck rotation to faces
+        dynamic_lmk_b_coords: torch.tensor Lx3, dtype = torch.float32
+            The look-up table from neck rotation to barycentric coordinates
+        neck_kin_chain: list
+            A python list that contains the indices of the joints that form the
+            kinematic chain of the neck.
+        dtype: torch.dtype, optional
+
+        Returns
+        -------
+        dyn_lmk_faces_idx: torch.tensor, dtype = torch.long
+            A tensor of size BxL that contains the indices of the faces that
+            will be used to compute the current dynamic landmarks.
+        dyn_lmk_b_coords: torch.tensor, dtype = torch.float32
+            A tensor of size BxL that contains the indices of the faces that
+            will be used to compute the current dynamic landmarks.
+    '''
 
     batch_size = vertices.shape[0]
 
@@ -84,12 +118,17 @@ def vertices2landmarks(vertices, faces, lmk_faces_idx, lmk_bary_coords):
     # Extract the indices of the vertices for each face
     # BxLx3
     batch_size, num_verts = vertices.shape[:2]
-    lmk_faces = torch.index_select(faces, 0, lmk_faces_idx.view(-1)).view(
-        1, -1, 3).repeat([batch_size, 1, 1])
-    lmk_faces += torch.arange(batch_size, dtype=torch.long).view(-1, 1, 1).to(
-        device=vertices.device) * num_verts
+    device = vertices.device
 
-    lmk_vertices = vertices.view(-1, 3)[lmk_faces]
+    lmk_faces = torch.index_select(faces, 0, lmk_faces_idx.view(-1)).view(
+        batch_size, -1, 3)
+
+    lmk_faces += torch.arange(
+        batch_size, dtype=torch.long, device=device).view(-1, 1, 1) * num_verts
+
+    lmk_vertices = vertices.view(-1, 3)[lmk_faces].view(
+        batch_size, -1, 3, 3)
+
     landmarks = torch.einsum('blfi,blf->bli', [lmk_vertices, lmk_bary_coords])
     return landmarks
 
