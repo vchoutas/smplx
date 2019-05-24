@@ -19,6 +19,8 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 
+# Joint name to vertex mapping. SMPL/SMPL-H/SMPL-X vertices that correspond to
+# MSCOCO and OpenPose joints
 vertex_ids = {
     'smplh': {
         'nose':		    332,

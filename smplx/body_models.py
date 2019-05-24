@@ -84,9 +84,53 @@ class SMPL(nn.Module):
                  joint_mapper=None, gender='neutral',
                  vertex_ids=None,
                  **kwargs):
-        '''
-            Keyword Arguments:
-                -
+        ''' SMPL model constructor
+
+            Parameters
+            ----------
+            model_folder: str
+                The path to the folder where the model parameters are stored
+            data_struct: Strct
+                A struct object. If given, then the parameters of the model are
+                read from the object. Otherwise, the model tries to read the
+                parameters from the given `model_folder`. (default = None)
+            create_global_orient: bool, optional
+                Flag for creating a member variable for the global orientation
+                of the body. (default = True)
+            global_orient: torch.tensor, optional, Bx3
+                The default value for the global orientation variable.
+                (default = None)
+            create_body_pose: bool, optional
+                Flag for creating a member variable for the pose of the body.
+                (default = True)
+            body_pose: torch.tensor, optional, Bx(Body Joints * 3)
+                The default value for the body pose variable.
+                (default = None)
+            create_betas: bool, optional
+                Flag for creating a member variable for the shape space
+                (default = True).
+            betas: torch.tensor, optional, Bx10
+                The default value for the shape member variable.
+                (default = None)
+            create_transl: bool, optional
+                Flag for creating a member variable for the translation
+                of the body. (default = True)
+            transl: torch.tensor, optional, Bx3
+                The default value for the transl variable.
+                (default = None)
+            dtype: torch.dtype, optional
+                The data type for the created variables
+            batch_size: int, optional
+                The batch size used for creating the member variables
+            joint_mapper: object, optional
+                An object that re-maps the joints. Useful if one wants to
+                re-order the SMPL joints to some other convention (e.g. MSCOCO)
+                (default = None)
+            gender: str, optional
+                Which gender to load
+            vertex_ids: dict, optional
+                A dictionary containing the indices of the extra vertices that
+                will be selected
         '''
 
         self.gender = gender
@@ -327,8 +371,7 @@ class SMPLH(SMPL):
                  use_compressed=True,
                  ext='pkl',
                  **kwargs):
-        '''
-        SMPLH model constructor
+        ''' SMPLH model constructor
 
             Parameters
             ----------
@@ -373,9 +416,14 @@ class SMPLH(SMPL):
             model_fn = 'SMPLH_{}.{ext}'.format(gender.upper(), ext=ext)
             smplh_path = os.path.join(model_folder, model_fn)
 
-            with open(smplh_path, 'rb') as smplh_file:
-                data_struct = Struct(**pickle.load(smplh_file,
-                                                   encoding='latin1'))
+            if ext == 'pkl':
+                with open(smplh_path, 'rb') as smplx_file:
+                    model_data = pickle.load(smplx_file, encoding='latin1')
+            elif ext == 'npz':
+                model_data = np.load(smplh_path, allow_pickle=True)
+            else:
+                raise ValueError('Unknown extension: {}'.format(ext))
+            data_struct = Struct(**model_data)
 
         if vertex_ids is None:
             vertex_ids = VERTEX_IDS['smplh']
@@ -554,8 +602,7 @@ class SMPLX(SMPLH):
                  dtype=torch.float32,
                  ext='npz',
                  **kwargs):
-        '''
-        Body model constructor
+        ''' SMPLX model constructor
 
             Parameters
             ----------
@@ -570,7 +617,7 @@ class SMPLX(SMPLH):
             create_jaw_pose: bool, optional
                 Flag for creating a member variable for the jaw pose.
                 (default = False)
-            jaw_pose: torch.tensor, optional, Bx10
+            jaw_pose: torch.tensor, optional, Bx3
                 The default value for the jaw pose variable.
                 (default = None)
             create_leye_pose: bool, optional
@@ -603,7 +650,7 @@ class SMPLX(SMPLH):
             with open(smplx_path, 'rb') as smplx_file:
                 model_data = pickle.load(smplx_file, encoding='latin1')
         elif ext == 'npz':
-            model_data = np.load(smplx_path)
+            model_data = np.load(smplx_path, allow_pickle=True)
         else:
             raise ValueError('Unknown extension: {}'.format(ext))
 
