@@ -61,6 +61,8 @@ if __name__ == '__main__':
                         help='The type of model to load')
     parser.add_argument('--gender', type=str, default='neutral',
                         help='The gender of the model')
+    parser.add_argument('--ext', type=str, default='npz',
+                        help='Which extension to use for loading')
     parser.add_argument('--plot-joints', default=False,
                         type=lambda arg: arg.lower() in ['true', '1'],
                         help='The path to the model folder')
@@ -75,6 +77,8 @@ if __name__ == '__main__':
     plot_joints = args.plot_joints
     use_face_contour = args.use_face_contour
     gender = args.gender
+    ext = args.ext
 
-    main(model_folder, model_type, gender=gender, plot_joints=plot_joints,
+    main(model_folder, model_type, ext=ext,
+         gender=gender, plot_joints=plot_joints,
          use_face_contour=use_face_contour)
