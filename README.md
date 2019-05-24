@@ -6,8 +6,12 @@
 ![SMPL-X Examples](./images/teaser_fig.png)
 
 ## Table of Contents
+  * [Description](#description)
   * [Installation](#installation)
   * [Dowloading the model](#downloading-the-model)
+  * [Loading SMPL-X, SMPL-H and SMPL](#loading-smpl-x-smpl-h-and-smpl) 
+    * [SMPL and SMPL-H setup](#smpl-and-smpl-h-setup)
+    * [Model loading](https://github.com/vchoutas/smplx#model-loading)
   * [Example](#example)
   * [Citation](#citation)
   * [Contact](#contact)
@@ -51,6 +55,7 @@ To download the *SMPL-X* go to the [project website](https://smpl-x.is.tue.mpg.d
 
 ### SMPL and SMPL-H setup
 
+First download the [SMPL](http://smpl.is.tue.mpg.de/) and [SMPL-H](http://mano.is.tue.mpg.de) models provided by the authors. 
 Before using SMPL and SMPL-H you should follow the instructions in [tools/README.md](./tools/README.md) to remove the
 Chumpy objects from both model pkls, as well as merge the MANO parameters with SMPL-H.
 
@@ -100,5 +105,33 @@ If you find this code useful in your research then please cite:
 }
 ```
 
+```
+    @article{SMPL:2015,
+      author = {Loper, Matthew and Mahmood, Naureen and Romero, Javier and Pons-Moll, Gerard and Black, Michael J.},
+      title = {{SMPL}: A Skinned Multi-Person Linear Model},
+      journal = {ACM Trans. Graphics (Proc. SIGGRAPH Asia)},
+      month = oct,
+      number = {6},
+      pages = {248:1--248:16},
+      publisher = {ACM},
+      volume = {34},
+      year = {2015}
+    }
+```
+
+```
+  @article{MANO:SIGGRAPHASIA:2017,
+      title = {Embodied Hands: Modeling and Capturing Hands and Bodies Together},
+      author = {Romero, Javier and Tzionas, Dimitrios and Black, Michael J.},
+      journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
+      volume = {36},
+      number = {6},
+      series = {245:1--245:17},
+      month = nov,
+      year = {2017},
+      month_numeric = {11}
+  }
+```
+
 ## Contact
-For questions about our paper or code, please contact [Vassilis Choutas](vassilis.choutas@tuebingen.mpg.de).
+For questions about our paper or code, please contact [Vassilis Choutas](vassilis.choutas@tuebingen.mpg.de) and [Georgios Pavlakos](pavlakos@seas.upenn.edu).
