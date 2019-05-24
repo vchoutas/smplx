@@ -10,7 +10,7 @@ URL = 'http://smpl-x.is.tuebingen.mpg.de'
 EMAIL = 'vassilis.choutas@tuebingen.mpg.de'
 AUTHOR = 'Vassilis Choutas'
 REQUIRES_PYTHON = '>=3.7.0'
-VERSION = '0.1.6'
+VERSION = '0.1.7'
 
 here = os.path.abspath(os.path.dirname(__file__))
 
