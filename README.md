@@ -18,7 +18,7 @@ The original images used for the figures 1 and 2 of the paper can be found in th
 The images in the paper are used under license from gettyimages.com.
 We have acquired the right to use them in the publication, but redistribution is not allowed.
 Please follow the instructions on the given link to acquire right of usage.
-Our results are obtained on the 483 × 724 pixels resolution of the original images.)
+Our results are obtained on the 483 × 724 pixels resolution of the original images.
 
 ## Description
 
@@ -47,6 +47,36 @@ python setup.py install
 
 To download the *SMPL-X* go to the [project website](https://smpl-x.is.tue.mpg.de/) and register to get access to the downloads section. 
 
+## Loading SMPL-X, SMPL-H and SMPL
+
+### SMPL and SMPL-H setup
+
+Before using SMPL and SMPL-H you should follow the instructions in [tools/README.md](./tools/README.md) to remove the
+Chumpy objects from both model pkls, as well as merge the MANO parameters with SMPL-H.
+
+### Model loading 
+
+You can either use the [create](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L54)
+function from [body_models](./smplx/body_models.py) or directly call the constructor for the 
+[SMPL](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L106), 
+[SMPL-H](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L395) and 
+[SMPL-X](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L628) model. The path to the model can either be the path to the file with the parameters or a directory with the following structure:
+```bash
+models
+├── smpl
+│   ├── SMPL_FEMALE.pkl
+│   └── SMPL_MALE.pkl
+├── smplh
+│   ├── SMPLH_FEMALE.pkl
+│   └── SMPLH_MALE.pkl
+└── smplx
+    ├── SMPLX_FEMALE.npz
+    ├── SMPLX_FEMALE.pkl
+    ├── SMPLX_MALE.npz
+    ├── SMPLX_MALE.pkl
+    ├── SMPLX_NEUTRAL.npz
+    └── SMPLX_NEUTRAL.pkl
+```
 
 ## Example
 
