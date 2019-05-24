@@ -20,6 +20,7 @@ from __future__ import print_function
 from __future__ import division
 
 import os
+import os.path as osp
 
 try:
     import cPickle as pickle
@@ -50,10 +51,48 @@ ModelOutput = namedtuple('ModelOutput',
 ModelOutput.__new__.__defaults__ = (None,) * len(ModelOutput._fields)
 
 
-def create(model_folder, model_type='smpl',
+def create(model_path, model_type='smpl',
            **kwargs):
+    ''' Method for creating a model from a path and a model type
 
-    model_path = os.path.join(model_folder, model_type)
+        Parameters
+        ----------
+        model_path: str
+            Either the path to the model you wish to load or a folder,
+            where each subfolder contains the differents types, i.e.:
+            model_path:
+            |
+            |-- smpl
+                |-- SMPL_FEMALE
+                |-- SMPL_NEUTRAL
+                |-- SMPL_MALE
+            |-- smplh
+                |-- SMPLH_FEMALE
+                |-- SMPLH_MALE
+            |-- smplx
+                |-- SMPLX_FEMALE
+                |-- SMPLX_NEUTRAL
+                |-- SMPLX_MALE
+        model_type: str, optional
+            When model_path is a folder, then this parameter specifies  the
+            type of model to be loaded
+        **kwargs: dict
+            Keyword arguments
+
+        Returns
+        -------
+            body_model: nn.Module
+                The PyTorch module that implements the corresponding body model
+        Raises
+        ------
+            ValueError: In case the model type is not one of SMPL, SMPLH or
+            SMPLX
+    '''
+
+    # If it's a folder, assume
+    if osp.isdir(model_path):
+        model_path = os.path.join(model_path, model_type)
+
     if model_type.lower() == 'smpl':
         return SMPL(model_path, **kwargs)
     elif model_type.lower() == 'smplh':
@@ -70,7 +109,7 @@ class SMPL(nn.Module):
     NUM_BODY_JOINTS = 23
     NUM_BETAS = 10
 
-    def __init__(self, model_folder, data_struct=None,
+    def __init__(self, model_path, data_struct=None,
                  create_betas=True,
                  betas=None,
                  create_global_orient=True,
@@ -88,12 +127,13 @@ class SMPL(nn.Module):
 
             Parameters
             ----------
-            model_folder: str
-                The path to the folder where the model parameters are stored
+            model_path: str
+                The path to the folder or to the file where the model
+                parameters are stored
             data_struct: Strct
                 A struct object. If given, then the parameters of the model are
                 read from the object. Otherwise, the model tries to read the
-                parameters from the given `model_folder`. (default = None)
+                parameters from the given `model_path`. (default = None)
             create_global_orient: bool, optional
                 Flag for creating a member variable for the global orientation
                 of the body. (default = True)
@@ -136,8 +176,12 @@ class SMPL(nn.Module):
         self.gender = gender
 
         if data_struct is None:
-            model_fn = 'SMPL_{}.{ext}'.format(gender.upper(), ext='pkl')
-            smpl_path = os.path.join(model_folder, model_fn)
+            if osp.isdir(model_path):
+                model_fn = 'SMPL_{}.{ext}'.format(gender.upper(), ext='pkl')
+                smpl_path = os.path.join(model_path, model_fn)
+            else:
+                smpl_path = model_path
+
             with open(smpl_path, 'rb') as smpl_file:
                 data_struct = Struct(**pickle.load(smpl_file,
                                                    encoding='latin1'))
@@ -355,7 +399,7 @@ class SMPLH(SMPL):
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = NUM_BODY_JOINTS + 2 * NUM_HAND_JOINTS
 
-    def __init__(self, model_folder,
+    def __init__(self, model_path,
                  data_struct=None,
                  create_left_hand_pose=True,
                  left_hand_pose=None,
@@ -375,12 +419,13 @@ class SMPLH(SMPL):
 
             Parameters
             ----------
-            model_folder: str
-                The path to the folder where the model parameters are stored
+            model_path: str
+                The path to the folder or to the file where the model
+                parameters are stored
             data_struct: Strct
                 A struct object. If given, then the parameters of the model are
                 read from the object. Otherwise, the model tries to read the
-                parameters from the given `model_folder`. (default = None)
+                parameters from the given `model_path`. (default = None)
             create_left_hand_pose: bool, optional
                 Flag for creating a member variable for the pose of the left
                 hand. (default = True)
@@ -413,8 +458,12 @@ class SMPLH(SMPL):
         # If no data structure is passed, then load the data from the given
         # model folder
         if data_struct is None:
-            model_fn = 'SMPLH_{}.{ext}'.format(gender.upper(), ext=ext)
-            smplh_path = os.path.join(model_folder, model_fn)
+            # Load the model
+            if osp.isfile(model_path):
+                smplh_path = model_path
+            elif osp.isdir(model_path):
+                model_fn = 'SMPLH_{}.{ext}'.format(gender.upper(), ext=ext)
+                smplh_path = os.path.join(model_path, model_fn)
 
             if ext == 'pkl':
                 with open(smplh_path, 'rb') as smplx_file:
@@ -429,7 +478,7 @@ class SMPLH(SMPL):
             vertex_ids = VERTEX_IDS['smplh']
 
         super(SMPLH, self).__init__(
-            model_folder=model_folder, data_struct=data_struct,
+            model_path=model_path, data_struct=data_struct,
             batch_size=batch_size, vertex_ids=vertex_ids, gender=gender,
             use_compressed=use_compressed, dtype=dtype, ext=ext, **kwargs)
 
@@ -497,7 +546,7 @@ class SMPLH(SMPL):
         pose_mean_tensor = torch.tensor(pose_mean, dtype=dtype)
         self.register_buffer('pose_mean', pose_mean_tensor)
 
-    def create_mean_pose(self, data_struct):
+    def create_mean_pose(self, data_struct, flat_hand_mean=False):
         # Create the array for the mean pose. If flat_hand is false, then use
         # the mean that is given by the data, rather than the flat open hand
         global_orient_mean = torch.zeros([3], dtype=self.dtype)
@@ -592,7 +641,7 @@ class SMPLX(SMPLH):
     NUM_EXPR_COEFFS = 10
     NECK_IDX = 12
 
-    def __init__(self, model_folder,
+    def __init__(self, model_path,
                  create_expression=True, expression=None,
                  create_jaw_pose=True, jaw_pose=None,
                  create_leye_pose=True, leye_pose=None,
@@ -606,8 +655,9 @@ class SMPLX(SMPLH):
 
             Parameters
             ----------
-            model_folder: str
-                The path to the folder where the model parameters are stored
+            model_path: str
+                The path to the folder or to the file where the model
+                parameters are stored
             create_expression: bool, optional
                 Flag for creating a member variable for the expression space
                 (default = True).
@@ -643,8 +693,11 @@ class SMPLX(SMPLH):
         '''
 
         # Load the model
-        model_fn = 'SMPLX_{}.{ext}'.format(gender.upper(), ext=ext)
-        smplx_path = os.path.join(model_folder, model_fn)
+        if osp.isfile(model_path):
+            smplx_path = model_path
+        elif osp.isdir(model_path):
+            model_fn = 'SMPLX_{}.{ext}'.format(gender.upper(), ext=ext)
+            smplx_path = os.path.join(model_path, model_fn)
 
         if ext == 'pkl':
             with open(smplx_path, 'rb') as smplx_file:
@@ -657,7 +710,7 @@ class SMPLX(SMPLH):
         data_struct = Struct(**model_data)
 
         super(SMPLX, self).__init__(
-            model_folder=model_folder,
+            model_path=model_path,
             data_struct=data_struct,
             dtype=dtype,
             batch_size=batch_size,
@@ -732,7 +785,7 @@ class SMPLX(SMPLH):
                                             requires_grad=True)
             self.register_parameter('expression', expression_param)
 
-    def create_mean_pose(self, data_struct, flat_hand_mean):
+    def create_mean_pose(self, data_struct, flat_hand_mean=False):
         # Create the array for the mean pose. If flat_hand is false, then use
         # the mean that is given by the data, rather than the flat open hand
         global_orient_mean = torch.zeros([3], dtype=self.dtype)
