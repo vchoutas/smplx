@@ -6,6 +6,7 @@
 ![SMPL-X Examples](./images/teaser_fig.png)
 
 ## Table of Contents
+  * [License](#license)
   * [Description](#description)
   * [Installation](#installation)
   * [Dowloading the model](#downloading-the-model)
@@ -15,6 +16,11 @@
   * [Example](#example)
   * [Citation](#citation)
   * [Contact](#contact)
+
+## License
+
+Software Copyright License for **non-commercial scientific research purposes**.
+Please read carefully the [terms and conditions](https://github.com/vchoutas/smplx/blob/master/LICENSE) and any accompanying documentation before you download and/or use the SMPL-X/SMPLify-X model, data and software, (the "Model & Software"), including 3D meshes, blend weights, blend shapes, textures, software, scripts, and animations. By downloading and/or using the Model & Software (including downloading, cloning, installing, and any other use of this github repository), you acknowledge that you have read these terms and conditions, understand them, and agree to be bound by them. If you do not agree with these terms and conditions, you must not download and/or use the Model & Software. Any infringement of the terms of this agreement will automatically terminate your rights under this [License](./LICENSE).
 
 ## Disclaimer
 
