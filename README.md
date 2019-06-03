@@ -61,7 +61,7 @@ To download the *SMPL-X* go to the [project website](https://smpl-x.is.tue.mpg.d
 
 ### SMPL and SMPL-H setup
 
-First download the [SMPL](http://smpl.is.tue.mpg.de/) and [SMPL-H](http://mano.is.tue.mpg.de) models provided by the authors. 
+Depending on the model you want to use, please follow the respective download instructions. To switch between SMPL, SMPL-H and SMPL-X just change the *model_path* or *model_type* parameters. For more details check the docs of the model classes.
 Before using SMPL and SMPL-H you should follow the instructions in [tools/README.md](./tools/README.md) to remove the
 Chumpy objects from both model pkls, as well as merge the MANO parameters with SMPL-H.
 
