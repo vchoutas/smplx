@@ -1,4 +1,4 @@
-## SMPL-X:  A new, unified, 3D model of the human body 
+## SMPL-X:  A new joint 3D model of the human body, face and hands together
 
 [[Paper Page](https://smpl-x.is.tue.mpg.de/)] [[Paper](https://ps.is.tuebingen.mpg.de/uploads_file/attachment/attachment/497/SMPL-X.pdf)]
 [[Supp. Mat.](https://ps.is.tuebingen.mpg.de/uploads_file/attachment/attachment/498/SMPL-X-supp.pdf)]
@@ -9,9 +9,9 @@
   * [License](#license)
   * [Description](#description)
   * [Installation](#installation)
-  * [Dowloading the model](#downloading-the-model)
-  * [Loading SMPL-X, SMPL-H and SMPL](#loading-smpl-x-smpl-h-and-smpl) 
-    * [SMPL and SMPL-H setup](#smpl-and-smpl-h-setup)
+  * [Downloading the model](#downloading-the-model)
+  * [Loading SMPL-X, SMPL+H and SMPL](#loading-smpl-x-smpl+h-and-smpl) 
+    * [SMPL and SMPL+H setup](#smpl-and-smpl+h-setup)
     * [Model loading](https://github.com/vchoutas/smplx#model-loading)
   * [Example](#example)
   * [Citation](#citation)
@@ -35,9 +35,9 @@ Our results are obtained on the 483 × 724 pixels resolution of the original ima
 *SMPL-X* (SMPL eXpressive) is a unified body model with shape parameters trained jointly for the
 face, hands and body. *SMPL-X* uses standard vertex based linear blend skinning with learned corrective blend
 shapes, has N = 10, 475 vertices and K = 54 joints,
-which includes joints for the neck, jaw, eyeballs and fingers. 
-SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameter, β the shape parameter and
-ψ the expression parameter.
+which include joints for the neck, jaw, eyeballs and fingers. 
+SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameters, β the shape parameters and
+ψ the facial expression parameters.
 
 
 ## Installation
@@ -55,22 +55,22 @@ python setup.py install
 
 ## Downloading the model
 
-To download the *SMPL-X* go to the [project website](https://smpl-x.is.tue.mpg.de/) and register to get access to the downloads section. 
+To download the *SMPL-X* model go to the [project website](https://smpl-x.is.tue.mpg.de/) and register to get access to the downloads section. 
 
-## Loading SMPL-X, SMPL-H and SMPL
+## Loading SMPL-X, SMPL+H and SMPL
 
-### SMPL and SMPL-H setup
+### SMPL and SMPL+H setup
 
-Depending on the model you want to use, please follow the respective download instructions. To switch between SMPL, SMPL-H and SMPL-X just change the *model_path* or *model_type* parameters. For more details check the docs of the model classes.
-Before using SMPL and SMPL-H you should follow the instructions in [tools/README.md](./tools/README.md) to remove the
-Chumpy objects from both model pkls, as well as merge the MANO parameters with SMPL-H.
+The loader gives the option to use any of the SMPL-X, SMPL+H and SMPL models. Depending on the model you want to use, please follow the respective download instructions. To switch between SMPL, SMPL+H and SMPL-X just change the *model_path* or *model_type* parameters. For more details please check the docs of the model classes.
+Before using SMPL and SMPL+H you should follow the instructions in [tools/README.md](./tools/README.md) to remove the
+Chumpy objects from both model pkls, as well as merge the MANO parameters with SMPL+H.
 
 ### Model loading 
 
 You can either use the [create](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L54)
 function from [body_models](./smplx/body_models.py) or directly call the constructor for the 
 [SMPL](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L106), 
-[SMPL-H](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L395) and 
+[SMPL+H](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L395) and 
 [SMPL-X](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L628) model. The path to the model can either be the path to the file with the parameters or a directory with the following structure:
 ```bash
 models
@@ -100,7 +100,7 @@ script to visualize the results. For this step you have to install the [pyrender
 
 ## Citation
 
-If you find this code useful in your research then please cite:
+If you find this Model & Software useful in your research we would kindly ask you to cite:
 
 ```
 @inproceedings{SMPL-X:2019,
