@@ -111,11 +111,13 @@ If you find this Model & Software useful in your research we would kindly ask yo
 }
 ```
 
+Depending on your project, please consider citing as well the most relevant work(s) below:
+
 ```
     @article{SMPL:2015,
       author = {Loper, Matthew and Mahmood, Naureen and Romero, Javier and Pons-Moll, Gerard and Black, Michael J.},
       title = {{SMPL}: A Skinned Multi-Person Linear Model},
-      journal = {ACM Trans. Graphics (Proc. SIGGRAPH Asia)},
+      journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
       month = oct,
       number = {6},
       pages = {248:1--248:16},
@@ -136,6 +138,20 @@ If you find this Model & Software useful in your research we would kindly ask yo
       month = nov,
       year = {2017},
       month_numeric = {11}
+  }
+```
+
+```
+  @article{FLAME:2017,
+    title = {Learning a model of facial shape and expression from {4D} scans},
+    author = {Li, Tianye and Bolkart, Timo and Black, Michael J. and Li, Hao and Romero, Javier},
+    journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
+    volume = {36},
+    number = {6},
+    pages = {194:1--194:17},
+    month = nov,
+    year = {2017},
+    month_numeric = {11}
   }
 ```
 
