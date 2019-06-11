@@ -154,6 +154,6 @@ This repository was originally developed for the following work, you might be in
 ## Contact
 The code of this repository was implemented by [Vassilis Choutas](vassilis.choutas@tuebingen.mpg.de) and [Georgios Pavlakos](pavlakos@seas.upenn.edu).  
 
-For questions, please contact [smplx@tuebingen.mpg.de](smplx@tuebingen.mpg.de). 
+For questions, please contact [smplx@tue.mpg.de](smplx@tue.mpg.de). 
 
 For commercial licensing, please contact [ps-licensing@tue.mpg.de](ps-licensing@tue.mpg.de).
