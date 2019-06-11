@@ -210,7 +210,7 @@ def lbs(betas, pose, v_template, shapedirs, posedirs, J_regressor, parents,
 
     # 5. Do skinning:
     # W is N x V x (J + 1)
-    W = lbs_weights.unsqueeze(dim=0).repeat([batch_size, 1, 1])
+    W = lbs_weights.unsqueeze(dim=0).expand([batch_size, -1, -1])
     # (N x V x (J + 1)) x (N x (J + 1) x 16)
     T = torch.matmul(W, A.view(batch_size, num_joints + 1, 16)) \
         .view(batch_size, -1, 4, 4)
