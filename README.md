@@ -156,4 +156,5 @@ Depending on your project, please consider citing as well the most relevant work
 ```
 
 ## Contact
-For questions about our paper or code, please contact [Vassilis Choutas](vassilis.choutas@tuebingen.mpg.de) and [Georgios Pavlakos](pavlakos@seas.upenn.edu).
+For questions about our paper or code, please contact [Vassilis Choutas](vassilis.choutas@tuebingen.mpg.de) and [Georgios Pavlakos](pavlakos@seas.upenn.edu).  
+For commercial licensing, contact ps-licensing@tue.mpg.de
