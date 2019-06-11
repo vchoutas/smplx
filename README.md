@@ -100,7 +100,7 @@ script to visualize the results. For this step you have to install the [pyrender
 
 ## Citation
 
-If you find this Model & Software useful in your research we would kindly ask you to cite:
+Depending on which model is loaded for your project, i.e. SMPL-X or SMPL+H or SMPL, please cite the most relevant work below, listed in the same order:
 
 ```
 @inproceedings{SMPL-X:2019,
@@ -109,22 +109,6 @@ If you find this Model & Software useful in your research we would kindly ask yo
   booktitle = {Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)},
   year = {2019}
 }
-```
-
-Depending on your project, please consider citing as well the most relevant work(s) below:
-
-```
-    @article{SMPL:2015,
-      author = {Loper, Matthew and Mahmood, Naureen and Romero, Javier and Pons-Moll, Gerard and Black, Michael J.},
-      title = {{SMPL}: A Skinned Multi-Person Linear Model},
-      journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
-      month = oct,
-      number = {6},
-      pages = {248:1--248:16},
-      publisher = {ACM},
-      volume = {34},
-      year = {2015}
-    }
 ```
 
 ```
@@ -142,22 +126,34 @@ Depending on your project, please consider citing as well the most relevant work
 ```
 
 ```
-  @article{FLAME:2017,
-    title = {Learning a model of facial shape and expression from {4D} scans},
-    author = {Li, Tianye and Bolkart, Timo and Black, Michael J. and Li, Hao and Romero, Javier},
-    journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
-    volume = {36},
-    number = {6},
-    pages = {194:1--194:17},
-    month = nov,
-    year = {2017},
-    month_numeric = {11}
-  }
+    @article{SMPL:2015,
+      author = {Loper, Matthew and Mahmood, Naureen and Romero, Javier and Pons-Moll, Gerard and Black, Michael J.},
+      title = {{SMPL}: A Skinned Multi-Person Linear Model},
+      journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
+      month = oct,
+      number = {6},
+      pages = {248:1--248:16},
+      publisher = {ACM},
+      volume = {34},
+      year = {2015}
+    }
 ```
+
+This repository was originally developed for the following work, you might be interested in having a look:
+
+```
+@inproceedings{SMPL-X:2019,
+title = {Expressive Body Capture: 3D Hands, Face, and Body from a Single Image},
+author = {Pavlakos, Georgios and Choutas, Vasileios and Ghorbani, Nima and Bolkart, Timo and Osman, Ahmed A. A. and Tzionas, Dimitrios and Black, Michael J.},
+booktitle = {Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)}, 
+year = {2019}
+}
+```
+
 
 ## Contact
 The code of this repository was implemented by [Vassilis Choutas](vassilis.choutas@tuebingen.mpg.de) and [Georgios Pavlakos](pavlakos@seas.upenn.edu).  
 
-For questions about the code, please contact [smplx@tuebingen.mpg.de](smplx@tuebingen.mpg.de). 
+For questions, please contact [smplx@tuebingen.mpg.de](smplx@tuebingen.mpg.de). 
 
 For commercial licensing, please contact [ps-licensing@tue.mpg.de](ps-licensing@tue.mpg.de).
