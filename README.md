@@ -139,16 +139,7 @@ Depending on which model is loaded for your project, i.e. SMPL-X or SMPL+H or SM
 }
 ```
 
-This repository was originally developed for the following work, you might be interested in having a look:
-
-```
-@inproceedings{SMPL-X:2019,
-    title = {Expressive Body Capture: 3D Hands, Face, and Body from a Single Image},
-    author = {Pavlakos, Georgios and Choutas, Vasileios and Ghorbani, Nima and Bolkart, Timo and Osman, Ahmed A. A. and Tzionas, Dimitrios and Black, Michael J.},
-    booktitle = {Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)}, 
-    year = {2019}
-}
-```
+This repository was originally developed for SMPL-X / SMPLify-X (CVPR 2019), you might be interested in having a look: [https://smpl-x.is.tue.mpg.de](https://smpl-x.is.tue.mpg.de).
 
 
 ## Contact
