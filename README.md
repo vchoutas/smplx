@@ -104,49 +104,49 @@ Depending on which model is loaded for your project, i.e. SMPL-X or SMPL+H or SM
 
 ```
 @inproceedings{SMPL-X:2019,
-  title = {Expressive Body Capture: 3D Hands, Face, and Body from a Single Image},
-  author = {Pavlakos, Georgios and Choutas, Vasileios and Ghorbani, Nima and Bolkart, Timo and Osman, Ahmed A. A. and Tzionas, Dimitrios and Black, Michael J.},
-  booktitle = {Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)},
-  year = {2019}
+    title = {Expressive Body Capture: 3D Hands, Face, and Body from a Single Image},
+    author = {Pavlakos, Georgios and Choutas, Vasileios and Ghorbani, Nima and Bolkart, Timo and Osman, Ahmed A. A. and Tzionas, Dimitrios and Black, Michael J.},
+    booktitle = {Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)},
+    year = {2019}
 }
 ```
 
 ```
-  @article{MANO:SIGGRAPHASIA:2017,
-      title = {Embodied Hands: Modeling and Capturing Hands and Bodies Together},
-      author = {Romero, Javier and Tzionas, Dimitrios and Black, Michael J.},
-      journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
-      volume = {36},
-      number = {6},
-      series = {245:1--245:17},
-      month = nov,
-      year = {2017},
-      month_numeric = {11}
+@article{MANO:SIGGRAPHASIA:2017,
+    title = {Embodied Hands: Modeling and Capturing Hands and Bodies Together},
+    author = {Romero, Javier and Tzionas, Dimitrios and Black, Michael J.},
+    journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
+    volume = {36},
+    number = {6},
+    series = {245:1--245:17},
+    month = nov,
+    year = {2017},
+    month_numeric = {11}
   }
 ```
 
 ```
-    @article{SMPL:2015,
-      author = {Loper, Matthew and Mahmood, Naureen and Romero, Javier and Pons-Moll, Gerard and Black, Michael J.},
-      title = {{SMPL}: A Skinned Multi-Person Linear Model},
-      journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
-      month = oct,
-      number = {6},
-      pages = {248:1--248:16},
-      publisher = {ACM},
-      volume = {34},
-      year = {2015}
-    }
+@article{SMPL:2015,
+    author = {Loper, Matthew and Mahmood, Naureen and Romero, Javier and Pons-Moll, Gerard and Black, Michael J.},
+    title = {{SMPL}: A Skinned Multi-Person Linear Model},
+    journal = {ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)},
+    month = oct,
+    number = {6},
+    pages = {248:1--248:16},
+    publisher = {ACM},
+    volume = {34},
+    year = {2015}
+}
 ```
 
 This repository was originally developed for the following work, you might be interested in having a look:
 
 ```
 @inproceedings{SMPL-X:2019,
-title = {Expressive Body Capture: 3D Hands, Face, and Body from a Single Image},
-author = {Pavlakos, Georgios and Choutas, Vasileios and Ghorbani, Nima and Bolkart, Timo and Osman, Ahmed A. A. and Tzionas, Dimitrios and Black, Michael J.},
-booktitle = {Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)}, 
-year = {2019}
+    title = {Expressive Body Capture: 3D Hands, Face, and Body from a Single Image},
+    author = {Pavlakos, Georgios and Choutas, Vasileios and Ghorbani, Nima and Bolkart, Timo and Osman, Ahmed A. A. and Tzionas, Dimitrios and Black, Michael J.},
+    booktitle = {Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)}, 
+    year = {2019}
 }
 ```
 
