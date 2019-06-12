@@ -599,7 +599,6 @@ class SMPLH(SMPL):
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
                                self.lbs_weights,
-                               num_joints=self.NUM_JOINTS,
                                dtype=self.dtype)
 
         # Add any extra joints that might be needed
@@ -911,7 +910,6 @@ class SMPLX(SMPLH):
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
                                self.lbs_weights,
-                               num_joints=self.NUM_JOINTS,
                                dtype=self.dtype)
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0)

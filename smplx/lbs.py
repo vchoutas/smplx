@@ -134,7 +134,7 @@ def vertices2landmarks(vertices, faces, lmk_faces_idx, lmk_bary_coords):
 
 
 def lbs(betas, pose, v_template, shapedirs, posedirs, J_regressor, parents,
-        lbs_weights, pose2rot=True, num_joints=23, dtype=torch.float32):
+        lbs_weights, pose2rot=True, dtype=torch.float32):
     ''' Performs Linear Blend Skinning with the given shape and pose parameters
 
         Parameters
@@ -162,9 +162,6 @@ def lbs(betas, pose, v_template, shapedirs, posedirs, J_regressor, parents,
             matrices. The default value is True. If False, then the pose tensor
             should already contain rotation matrices and have a size of
             Bx(J + 1)x9
-        num_joints : int, optional
-            The number of joints of the model. The default value is equal
-            to the number of joints of the SMPL body model
         dtype: torch.dtype, optional
 
         Returns
@@ -212,7 +209,8 @@ def lbs(betas, pose, v_template, shapedirs, posedirs, J_regressor, parents,
     # W is N x V x (J + 1)
     W = lbs_weights.unsqueeze(dim=0).expand([batch_size, -1, -1])
     # (N x V x (J + 1)) x (N x (J + 1) x 16)
-    T = torch.matmul(W, A.view(batch_size, num_joints + 1, 16)) \
+    num_joints = J_regressor.shape[0]
+    T = torch.matmul(W, A.view(batch_size, num_joints, 16)) \
         .view(batch_size, -1, 4, 4)
 
     homogen_coord = torch.ones([batch_size, v_posed.shape[1], 1],
