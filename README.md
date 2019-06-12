@@ -15,6 +15,7 @@
     * [Model loading](https://github.com/vchoutas/smplx#model-loading)
   * [Example](#example)
   * [Citation](#citation)
+  * [Acknowledgments](#acknowledgments)
   * [Contact](#contact)
 
 ## License
@@ -141,6 +142,12 @@ Depending on which model is loaded for your project, i.e. SMPL-X or SMPL+H or SM
 
 This repository was originally developed for SMPL-X / SMPLify-X (CVPR 2019), you might be interested in having a look: [https://smpl-x.is.tue.mpg.de](https://smpl-x.is.tue.mpg.de).
 
+## Acknowledgments
+
+### Facial Contour
+
+Special thanks to [Soubhik Sanyal](https://github.com/soubhiksanyal) for sharing the Tensorflow code used for the facial
+landmarks.
 
 ## Contact
 The code of this repository was implemented by [Vassilis Choutas](vassilis.choutas@tuebingen.mpg.de).
