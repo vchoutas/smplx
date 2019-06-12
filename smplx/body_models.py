@@ -299,7 +299,6 @@ class SMPL(nn.Module):
 
     @torch.no_grad()
     def reset_params(self, **params_dict):
-        # TODO: In PyTorch 1.0 just set recurse=False
         for param_name, param in self.named_parameters():
             if param_name in params_dict:
                 param[:] = torch.tensor(params_dict[param_name])
@@ -316,7 +315,8 @@ class SMPL(nn.Module):
         return 'Number of betas: {}'.format(self.NUM_BETAS)
 
     def forward(self, betas=None, body_pose=None, global_orient=None,
-                transl=None, return_verts=True, return_full_pose=False, **kwargs):
+                transl=None, return_verts=True, return_full_pose=False,
+                **kwargs):
         ''' Forward pass for the SMPL model
 
             Parameters
