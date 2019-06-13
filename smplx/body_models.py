@@ -181,6 +181,8 @@ class SMPL(nn.Module):
                 smpl_path = os.path.join(model_path, model_fn)
             else:
                 smpl_path = model_path
+            assert osp.exists(smpl_path), 'Path {} does not exist!'.format(
+                smpl_path)
 
             with open(smpl_path, 'rb') as smpl_file:
                 data_struct = Struct(**pickle.load(smpl_file,
@@ -457,15 +459,17 @@ class SMPLH(SMPL):
         # model folder
         if data_struct is None:
             # Load the model
-            if osp.isfile(model_path):
-                smplh_path = model_path
-            elif osp.isdir(model_path):
+            if osp.isdir(model_path):
                 model_fn = 'SMPLH_{}.{ext}'.format(gender.upper(), ext=ext)
                 smplh_path = os.path.join(model_path, model_fn)
+            else:
+                smplh_path = model_path
+            assert osp.exists(smplh_path), 'Path {} does not exist!'.format(
+                smplh_path)
 
             if ext == 'pkl':
-                with open(smplh_path, 'rb') as smplx_file:
-                    model_data = pickle.load(smplx_file, encoding='latin1')
+                with open(smplh_path, 'rb') as smplh_file:
+                    model_data = pickle.load(smplh_file, encoding='latin1')
             elif ext == 'npz':
                 model_data = np.load(smplh_path, allow_pickle=True)
             else:
@@ -690,11 +694,13 @@ class SMPLX(SMPLH):
         '''
 
         # Load the model
-        if osp.isfile(model_path):
-            smplx_path = model_path
-        elif osp.isdir(model_path):
+        if osp.isdir(model_path):
             model_fn = 'SMPLX_{}.{ext}'.format(gender.upper(), ext=ext)
             smplx_path = os.path.join(model_path, model_fn)
+        else:
+            smplx_path = model_path
+        assert osp.exists(smplx_path), 'Path {} does not exist!'.format(
+            smplx_path)
 
         if ext == 'pkl':
             with open(smplx_path, 'rb') as smplx_file:
