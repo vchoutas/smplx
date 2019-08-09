@@ -52,7 +52,9 @@ if not VERSION:
 else:
     about['__version__'] = VERSION
 
-render_reqs = ['pyrender>=0.1.23', 'trimesh>=2.37.6', 'shapely']
+pyrender_reqs = ['pyrender>=0.1.23', 'trimesh>=2.37.6', 'shapely']
+matplotlib_reqs = ['matplotlib']
+open3d_reqs = ['open3d-python']
 
 setup(name=NAME,
       version=about['__version__'],
@@ -69,7 +71,9 @@ setup(name=NAME,
           'torchgeometry>=0.1.2'
       ],
       extras_require={
-          'render': render_reqs,
-          'all': render_reqs
+          'pyrender': pyrender_reqs,
+          'open3d': open3d_reqs,
+          'matplotlib': matplotlib_reqs,
+          'all': pyrender_reqs + matplotlib_reqs + open3d_reqs
       },
       packages=['smplx', 'tools'])

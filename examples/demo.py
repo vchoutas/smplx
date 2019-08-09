@@ -21,13 +21,12 @@ import argparse
 import numpy as np
 import torch
 
-import pyrender
-import trimesh
 import smplx
 
 
 def main(model_folder, model_type='smplx', ext='npz',
          gender='neutral', plot_joints=False,
+         plotting_module='pyrender',
          use_face_contour=False):
 
     model = smplx.create(model_folder, model_type=model_type,
@@ -46,24 +45,59 @@ def main(model_folder, model_type='smplx', ext='npz',
     print('Vertices shape =', vertices.shape)
     print('Joints shape =', joints.shape)
 
-    vertex_colors = np.ones([vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 0.8]
-    tri_mesh = trimesh.Trimesh(vertices, model.faces,
-                               vertex_colors=vertex_colors)
+    if plotting_module == 'pyrender':
+        import pyrender
+        import trimesh
+        vertex_colors = np.ones([vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 0.8]
+        tri_mesh = trimesh.Trimesh(vertices, model.faces,
+                                   vertex_colors=vertex_colors)
 
-    mesh = pyrender.Mesh.from_trimesh(tri_mesh)
+        mesh = pyrender.Mesh.from_trimesh(tri_mesh)
 
-    scene = pyrender.Scene()
-    scene.add(mesh)
+        scene = pyrender.Scene()
+        scene.add(mesh)
 
-    if plot_joints:
-        sm = trimesh.creation.uv_sphere(radius=0.005)
-        sm.visual.vertex_colors = [0.9, 0.1, 0.1, 1.0]
-        tfs = np.tile(np.eye(4), (len(joints), 1, 1))
-        tfs[:, :3, 3] = joints
-        joints_pcl = pyrender.Mesh.from_trimesh(sm, poses=tfs)
-        scene.add(joints_pcl)
+        if plot_joints:
+            sm = trimesh.creation.uv_sphere(radius=0.005)
+            sm.visual.vertex_colors = [0.9, 0.1, 0.1, 1.0]
+            tfs = np.tile(np.eye(4), (len(joints), 1, 1))
+            tfs[:, :3, 3] = joints
+            joints_pcl = pyrender.Mesh.from_trimesh(sm, poses=tfs)
+            scene.add(joints_pcl)
 
-    pyrender.Viewer(scene, use_raymond_lighting=True)
+        pyrender.Viewer(scene, use_raymond_lighting=True)
+    elif plotting_module == 'matplotlib':
+        from matplotlib import pyplot as plt
+        from mpl_toolkits.mplot3d import Axes3D
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        mesh = Poly3DCollection(vertices[model.faces], alpha=0.1)
+        face_color = (1.0, 1.0, 0.9)
+        edge_color = (0, 0, 0)
+        mesh.set_edgecolor(edge_color)
+        mesh.set_facecolor(face_color)
+        ax.add_collection3d(mesh)
+        ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], color='r')
+
+        if plot_joints:
+            ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], alpha=0.1)
+        plt.show()
+    elif plotting_module == 'open3d':
+        import open3d as o3d
+
+        mesh = o3d.TriangleMesh()
+        mesh.vertices = o3d.Vector3dVector(
+            vertices)
+        mesh.triangles = o3d.Vector3iVector(model.faces)
+        mesh.compute_vertex_normals()
+        mesh.paint_uniform_color([0.3, 0.3, 0.3])
+
+        o3d.visualization.draw_geometries([mesh])
+    else:
+        raise ValueError('Unknown plotting_module: {}'.format(plotting_module))
 
 
 if __name__ == '__main__':
@@ -76,6 +110,10 @@ if __name__ == '__main__':
                         help='The type of model to load')
     parser.add_argument('--gender', type=str, default='neutral',
                         help='The gender of the model')
+    parser.add_argument('--plotting-module', type=str, default='pyrender',
+                        dest='plotting_module',
+                        choices=['pyrender', 'matplotlib', 'open3d'],
+                        help='The module to use for plotting the result')
     parser.add_argument('--ext', type=str, default='npz',
                         help='Which extension to use for loading')
     parser.add_argument('--plot-joints', default=False,
@@ -93,7 +131,9 @@ if __name__ == '__main__':
     use_face_contour = args.use_face_contour
     gender = args.gender
     ext = args.ext
+    plotting_module = args.plotting_module
 
     main(model_folder, model_type, ext=ext,
          gender=gender, plot_joints=plot_joints,
+         plotting_module=plotting_module,
          use_face_contour=use_face_contour)
