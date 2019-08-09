@@ -589,10 +589,11 @@ class SMPLH(SMPL):
             if hasattr(self, 'transl'):
                 transl = self.transl
 
-        left_hand_pose = torch.einsum(
-            'bi,ij->bj', [left_hand_pose, self.left_hand_components])
-        right_hand_pose = torch.einsum(
-            'bi,ij->bj', [right_hand_pose, self.right_hand_components])
+        if self.use_pca:
+            left_hand_pose = torch.einsum(
+                'bi,ij->bj', [left_hand_pose, self.left_hand_components])
+            right_hand_pose = torch.einsum(
+                'bi,ij->bj', [right_hand_pose, self.right_hand_components])
 
         full_pose = torch.cat([global_orient, body_pose,
                                left_hand_pose,
@@ -891,10 +892,11 @@ class SMPLX(SMPLH):
             if hasattr(self, 'transl'):
                 transl = self.transl
 
-        left_hand_pose = torch.einsum(
-            'bi,ij->bj', [left_hand_pose, self.left_hand_components])
-        right_hand_pose = torch.einsum(
-            'bi,ij->bj', [right_hand_pose, self.right_hand_components])
+        if self.use_pca:
+            left_hand_pose = torch.einsum(
+                'bi,ij->bj', [left_hand_pose, self.left_hand_components])
+            right_hand_pose = torch.einsum(
+                'bi,ij->bj', [right_hand_pose, self.right_hand_components])
 
         full_pose = torch.cat([global_orient, body_pose,
                                jaw_pose, leye_pose, reye_pose,
