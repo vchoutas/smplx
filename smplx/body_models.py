@@ -910,9 +910,10 @@ class SMPLX(SMPLH):
         batch_size = max(betas.shape[0], global_orient.shape[0],
                          body_pose.shape[0])
         # Concatenate the shape and expression coefficients
-        shape_components = torch.cat(
-            [betas.expand(int(batch_size / betas.shape[0]), -1), expression],
-            dim=-1)
+        scale = int(batch_size / betas.shape[0])
+        if scale > 1:
+            betas = betas.expand(scale, -1)
+        shape_components = torch.cat([betas, expression], dim=-1)
 
         vertices, joints = lbs(shape_components, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
@@ -920,7 +921,8 @@ class SMPLX(SMPLH):
                                self.lbs_weights,
                                dtype=self.dtype)
 
-        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0)
+        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
+            dim=0).expand(batch_size, -1).contiguous()
         lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
             self.batch_size, 1, 1)
         if self.use_face_contour:
@@ -929,7 +931,7 @@ class SMPLX(SMPLH):
                 self.dynamic_lmk_bary_coords,
                 self.neck_kin_chain, dtype=self.dtype)
 
-            lmk_faces_idx = torch.cat([lmk_faces_idx.expand(batch_size, -1),
+            lmk_faces_idx = torch.cat([lmk_faces_idx,
                                        dyn_lmk_faces_idx], 1)
             lmk_bary_coords = torch.cat(
                 [lmk_bary_coords.expand(batch_size, -1, -1),
