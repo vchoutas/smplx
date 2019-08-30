@@ -56,7 +56,11 @@ python setup.py install
 
 ## Downloading the model
 
-To download the *SMPL-X* model go to the [project website](https://smpl-x.is.tue.mpg.de/) and register to get access to the downloads section. 
+To download the *SMPL-X* model go to [this project website](https://smpl-x.is.tue.mpg.de) and register to get access to the downloads section. 
+
+To download the *SMPL+H* model go to [this project website](https://mano.is.tue.mpg.de) and register to get access to the downloads section. 
+
+To download the *SMPL* model go to [this project website](https://smpl.is.tue.mpg.de) and register to get access to the downloads section. 
 
 ## Loading SMPL-X, SMPL+H and SMPL
 
