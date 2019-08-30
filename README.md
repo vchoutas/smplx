@@ -43,10 +43,10 @@ SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameters, 
 
 ## Installation
 
-To install the model simply you can:
+To install the model please follow the next steps in the specified order:
 1. To install from PyPi simply run: 
   ```Shell
-  pip install smplx
+  pip install smplx[all]
   ```
 2. Clone this repository and install it using the *setup.py* script: 
 ```Shell
