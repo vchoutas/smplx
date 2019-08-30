@@ -60,7 +60,7 @@ To download the *SMPL-X* model go to [this project website](https://smpl-x.is.tu
 
 To download the *SMPL+H* model go to [this project website](http://mano.is.tue.mpg.de) and register to get access to the downloads section. 
 
-To download the *SMPL* model go to [this project website](http://smpl.is.tue.mpg.de) and register to get access to the downloads section. 
+To download the *SMPL* model go to [this](http://smpl.is.tue.mpg.de) (male and female models) and [this](http://smplify.is.tue.mpg.de) (gender neutral model) project website and register to get access to the downloads section. 
 
 ## Loading SMPL-X, SMPL+H and SMPL
 
@@ -82,6 +82,7 @@ models
 ├── smpl
 │   ├── SMPL_FEMALE.pkl
 │   └── SMPL_MALE.pkl
+│   └── SMPL_NEUTRAL.pkl
 ├── smplh
 │   ├── SMPLH_FEMALE.pkl
 │   └── SMPLH_MALE.pkl
