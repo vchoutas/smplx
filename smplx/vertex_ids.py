@@ -10,8 +10,7 @@
 #
 # Copyright©2019 Max-Planck-Gesellschaft zur Förderung
 # der Wissenschaften e.V. (MPG). acting on behalf of its Max Planck Institute
-# for Intelligent Systems and the Max Planck Institute for Biological
-# Cybernetics. All rights reserved.
+# for Intelligent Systems. All rights reserved.
 #
 # Contact: ps-license@tuebingen.mpg.de
 
