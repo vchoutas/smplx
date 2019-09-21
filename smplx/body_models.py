@@ -10,7 +10,8 @@
 #
 # Copyright©2019 Max-Planck-Gesellschaft zur Förderung
 # der Wissenschaften e.V. (MPG). acting on behalf of its Max Planck Institute
-# for Intelligent Systems. All rights reserved.
+# for Intelligent Systems and the Max Planck Institute for Biological
+# Cybernetics. All rights reserved.
 #
 # Contact: ps-license@tuebingen.mpg.de
 
@@ -872,24 +873,25 @@ class SMPLX(SMPLH):
 
         # If no shape and pose parameters are passed along, then use the
         # ones from the module
-        global_orient = (global_orient if global_orient is not None else
-                         self.global_orient)
+        
         body_pose = body_pose if body_pose is not None else self.body_pose
-        betas = betas if betas is not None else self.betas
+        bn = body_pose.shape[0]
+        global_orient = (global_orient if global_orient is not None else
+                         self.global_orient[:bn])
+        betas = betas if betas is not None else self.betas[:bn]
 
         left_hand_pose = (left_hand_pose if left_hand_pose is not None else
                           self.left_hand_pose)
         right_hand_pose = (right_hand_pose if right_hand_pose is not None else
                            self.right_hand_pose)
-        jaw_pose = jaw_pose if jaw_pose is not None else self.jaw_pose
-        leye_pose = leye_pose if leye_pose is not None else self.leye_pose
-        reye_pose = reye_pose if reye_pose is not None else self.reye_pose
-        expression = expression if expression is not None else self.expression
-
+        jaw_pose = jaw_pose if jaw_pose is not None else self.jaw_pose[:bn]
+        leye_pose = leye_pose if leye_pose is not None else self.leye_pose[:bn]
+        reye_pose = reye_pose if reye_pose is not None else self.reye_pose[:bn]
+        expression = expression if expression is not None else self.expression[:bn]
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None:
             if hasattr(self, 'transl'):
-                transl = self.transl
+                transl = self.transl[:bn]
 
         if self.use_pca:
             left_hand_pose = torch.einsum(
@@ -897,10 +899,10 @@ class SMPLX(SMPLH):
             right_hand_pose = torch.einsum(
                 'bi,ij->bj', [right_hand_pose, self.right_hand_components])
 
-        full_pose = torch.cat([global_orient, body_pose,
-                               jaw_pose, leye_pose, reye_pose,
-                               left_hand_pose,
-                               right_hand_pose], dim=1)
+        full_pose = torch.cat([global_orient[:bn], body_pose[:bn],
+                               jaw_pose[:bn], leye_pose[:bn], reye_pose[:bn],
+                               left_hand_pose[:bn],
+                               right_hand_pose[:bn]], dim=1)
 
         # Add the mean pose of the model. Does not affect the body, only the
         # hands when flat_hand_mean == False
@@ -923,7 +925,7 @@ class SMPLX(SMPLH):
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
         lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            self.batch_size, 1, 1)
+            batch_size, 1, 1)
         if self.use_face_contour:
             dyn_lmk_faces_idx, dyn_lmk_bary_coords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
@@ -935,7 +937,6 @@ class SMPLX(SMPLH):
             lmk_bary_coords = torch.cat(
                 [lmk_bary_coords.expand(batch_size, -1, -1),
                  dyn_lmk_bary_coords], 1)
-
         landmarks = vertices2landmarks(vertices, self.faces_tensor,
                                        lmk_faces_idx,
                                        lmk_bary_coords)
