@@ -356,20 +356,17 @@ class SMPL(nn.Module):
         '''
         # If no shape and pose parameters are passed along, then use the
         # ones from the module
-        global_orient = (global_orient if global_orient is not None else
-                         self.global_orient)
         body_pose = body_pose if body_pose is not None else self.body_pose
-        betas = betas if betas is not None else self.betas
+        bn = body_pose.shape[0]
+        global_orient = (global_orient if global_orient is not None else
+                         self.global_orient[:bn])
+        betas = betas if betas is not None else self.betas[:bn]
 
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None and hasattr(self, 'transl'):
-            transl = self.transl
+            transl = self.transl[:bn]
 
         full_pose = torch.cat([global_orient, body_pose], dim=1)
-
-        if betas.shape[0] != self.batch_size:
-            num_repeats = int(self.batch_size / betas.shape[0])
-            betas = betas.expand(num_repeats, -1)
 
         vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
