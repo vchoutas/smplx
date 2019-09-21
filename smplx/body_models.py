@@ -269,7 +269,10 @@ class SMPL(nn.Module):
         self.register_buffer('v_template',
                              to_tensor(to_np(data_struct.v_template),
                                        dtype=dtype))
-
+        # add bias
+        if self.v_template.shape[0] == 10475:
+            bias = torch.Tensor(np.array([[0, 0.1728, 0.0218]]))
+            self.v_template = self.v_template + bias
         # The shape components
         shapedirs = data_struct.shapedirs
         # The shape components
