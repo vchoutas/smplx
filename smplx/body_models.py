@@ -361,7 +361,8 @@ class SMPL(nn.Module):
         global_orient = (global_orient if global_orient is not None else
                          self.global_orient[:bn])
         betas = betas if betas is not None else self.betas[:bn]
-
+        if betas.shape[0] < bn:
+            betas = betas.expand(bn, -1)
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None and hasattr(self, 'transl'):
             transl = self.transl[:bn]
@@ -879,7 +880,6 @@ class SMPLX(SMPLH):
         global_orient = (global_orient if global_orient is not None else
                          self.global_orient[:bn])
         betas = betas if betas is not None else self.betas[:bn]
-
         left_hand_pose = (left_hand_pose if left_hand_pose is not None else
                           self.left_hand_pose)
         right_hand_pose = (right_hand_pose if right_hand_pose is not None else
