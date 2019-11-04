@@ -31,7 +31,7 @@ import numpy as np
 
 def clean_fn(fn, output_folder='output'):
     with open(fn, 'rb') as body_file:
-        body_data = pickle.load(body_file)
+        body_data = pickle.load(body_file, encoding='latin1')
 
     output_dict = {}
     for key, data in body_data.iteritems():
