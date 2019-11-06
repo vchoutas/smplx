@@ -576,19 +576,21 @@ class SMPLH(SMPL):
         '''
         # If no shape and pose parameters are passed along, then use the
         # ones from the module
-        global_orient = (global_orient if global_orient is not None else
-                         self.global_orient)
         body_pose = body_pose if body_pose is not None else self.body_pose
-        betas = betas if betas is not None else self.betas
+        bn = body_pose.shape[0]
+        global_orient = (global_orient if global_orient is not None else
+                         self.global_orient[:bn])
+        
+        betas = betas if betas is not None else self.betas[:bn]
         left_hand_pose = (left_hand_pose if left_hand_pose is not None else
-                          self.left_hand_pose)
+                          self.left_hand_pose[:bn])
         right_hand_pose = (right_hand_pose if right_hand_pose is not None else
-                           self.right_hand_pose)
+                           self.right_hand_pose[:bn])
 
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None:
             if hasattr(self, 'transl'):
-                transl = self.transl
+                transl = self.transl[:bn]
 
         if self.use_pca:
             left_hand_pose = torch.einsum(
@@ -596,12 +598,12 @@ class SMPLH(SMPL):
             right_hand_pose = torch.einsum(
                 'bi,ij->bj', [right_hand_pose, self.right_hand_components])
 
-        full_pose = torch.cat([global_orient, body_pose,
-                               left_hand_pose,
-                               right_hand_pose], dim=1)
-        full_pose += self.pose_mean
-
-        vertices, joints = lbs(self.betas, full_pose, self.v_template,
+        full_pose = torch.cat([global_orient[:bn], body_pose[:bn],
+                               left_hand_pose[:bn],
+                               right_hand_pose[:bn]], dim=1)
+        full_pose += self.pose_mean[:bn]
+        import ipdb; ipdb.set_trace()
+        vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
                                self.lbs_weights,
