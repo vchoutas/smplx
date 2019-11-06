@@ -597,12 +597,10 @@ class SMPLH(SMPL):
                 'bi,ij->bj', [left_hand_pose, self.left_hand_components])
             right_hand_pose = torch.einsum(
                 'bi,ij->bj', [right_hand_pose, self.right_hand_components])
-
         full_pose = torch.cat([global_orient[:bn], body_pose[:bn],
                                left_hand_pose[:bn],
                                right_hand_pose[:bn]], dim=1)
-        full_pose += self.pose_mean[:bn]
-        import ipdb; ipdb.set_trace()
+        full_pose += self.pose_mean
         vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
