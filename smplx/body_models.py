@@ -320,7 +320,7 @@ class SMPL(nn.Module):
         return 'Number of betas: {}'.format(self.NUM_BETAS)
 
     def forward(self, betas=None, body_pose=None, global_orient=None,
-                transl=None, return_verts=True, return_full_pose=False,
+                transl=None, return_verts=True, return_full_pose=False, pose2rot=True,
                 **kwargs):
         ''' Forward pass for the SMPL model
 
@@ -372,7 +372,7 @@ class SMPL(nn.Module):
         vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
-                               self.lbs_weights, dtype=self.dtype)
+                               self.lbs_weights, pose2rot=pose2rot, dtype=self.dtype)
 
         joints = self.vertex_joint_selector(vertices, joints)
         # Map the joints to the current dataset
@@ -387,7 +387,7 @@ class SMPL(nn.Module):
                              global_orient=global_orient,
                              body_pose=body_pose,
                              joints=joints,
-                             betas=self.betas,
+                             betas=betas,
                              full_pose=full_pose if return_full_pose else None)
 
         return output
@@ -570,7 +570,7 @@ class SMPLH(SMPL):
 
     def forward(self, betas=None, global_orient=None, body_pose=None,
                 left_hand_pose=None, right_hand_pose=None, transl=None,
-                return_verts=True, return_full_pose=False,
+                return_verts=True, return_full_pose=False, pose2rot=True,
                 **kwargs):
         '''
         '''
@@ -604,7 +604,7 @@ class SMPLH(SMPL):
         vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
-                               self.lbs_weights,
+                               self.lbs_weights, pose2rot=pose2rot,
                                dtype=self.dtype)
 
         # Add any extra joints that might be needed
@@ -618,7 +618,7 @@ class SMPLH(SMPL):
 
         output = ModelOutput(vertices=vertices if return_verts else None,
                              joints=joints,
-                             betas=self.betas,
+                             betas=betas,
                              global_orient=global_orient,
                              body_pose=body_pose,
                              left_hand_pose=left_hand_pose,
@@ -819,7 +819,7 @@ class SMPLX(SMPLH):
     def forward(self, betas=None, global_orient=None, body_pose=None,
                 left_hand_pose=None, right_hand_pose=None, transl=None,
                 expression=None, jaw_pose=None, leye_pose=None, reye_pose=None,
-                return_verts=True, return_full_pose=False, **kwargs):
+                return_verts=True, return_full_pose=False, pose2rot=True, **kwargs):
         '''
         Forward pass for the SMPLX model
 
@@ -919,7 +919,7 @@ class SMPLX(SMPLH):
         vertices, joints = lbs(shape_components, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
-                               self.lbs_weights,
+                               self.lbs_weights, pose2rot=pose2rot,
                                dtype=self.dtype)
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
