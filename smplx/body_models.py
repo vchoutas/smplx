@@ -960,10 +960,10 @@ class SMPLX(SMPLH):
                              joints=joints,
                              betas=betas,
                              expression=expression,
-                             global_orient=self.global_orient,
+                             global_orient=global_orient,
                              body_pose=body_pose,
-                             left_hand_pose=self.left_hand_pose,
-                             right_hand_pose=self.right_hand_pose,
+                             left_hand_pose=left_hand_pose,
+                             right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
                              full_pose=full_pose if return_full_pose else None)
         return output
