@@ -13,6 +13,7 @@
   * [Loading SMPL-X, SMPL+H and SMPL](#loading-smpl-x-smplh-and-smpl) 
     * [SMPL and SMPL+H setup](#smpl-and-smplh-setup)
     * [Model loading](https://github.com/vchoutas/smplx#model-loading)
+  * [MANO and FLAME correspondences](#mano-and-flame-correspondences) 
   * [Example](#example)
   * [Citation](#citation)
   * [Acknowledgments](#acknowledgments)
@@ -93,6 +94,26 @@ models
     ├── SMPLX_MALE.pkl
     ├── SMPLX_NEUTRAL.npz
     └── SMPLX_NEUTRAL.pkl
+```
+
+
+## MANO and FLAME correspondences
+
+The vertex correspondences between SMPL-X and MANO, FLAME can be downloaded
+from [the project website](https://smpl-x.is.tue.mpg.de). If you have extracted
+the correspondence data in the folder *correspondences*, then use the following
+scripts to visualize them:
+
+1. To view MANO correspondences run the following command:
+
+```
+python examples/vis_mano_vertices.py --model-folder $SMPLX_FOLDER --corr-fname correspondences/MANO_SMPLX_vertex_ids.pkl
+```
+
+2. To view FLAME correspondences run the following command:
+
+```
+python examples/vis_flame_vertices.py --model-folder $SMPLX_FOLDER --corr-fname correspondences/SMPL-X__FLAME_vertex_ids.npy
 ```
 
 ## Example
