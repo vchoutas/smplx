@@ -87,10 +87,10 @@ def main(model_folder, model_type='smplx', ext='npz',
     elif plotting_module == 'open3d':
         import open3d as o3d
 
-        mesh = o3d.TriangleMesh()
-        mesh.vertices = o3d.Vector3dVector(
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(
             vertices)
-        mesh.triangles = o3d.Vector3iVector(model.faces)
+        mesh.triangles = o3d.utility.Vector3iVector(model.faces)
         mesh.compute_vertex_normals()
         mesh.paint_uniform_color([0.3, 0.3, 0.3])
 
