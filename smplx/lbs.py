@@ -72,7 +72,7 @@ def find_dynamic_lmk_idx_and_bcoords(vertices, pose, dynamic_lmk_faces_idx,
         aa_pose.view(-1, 3), dtype=dtype).view(batch_size, -1, 3, 3)
 
     rel_rot_mat = torch.eye(3, device=vertices.device,
-                            dtype=dtype).unsqueeze_(dim=0)
+                            dtype=dtype).unsqueeze_(dim=0).repeat(batch_size,1,1)
     for idx in range(len(neck_kin_chain)):
         rel_rot_mat = torch.bmm(rot_mats[:, idx], rel_rot_mat)
 
