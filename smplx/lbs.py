@@ -71,8 +71,9 @@ def find_dynamic_lmk_idx_and_bcoords(vertices, pose, dynamic_lmk_faces_idx,
     rot_mats = batch_rodrigues(
         aa_pose.view(-1, 3), dtype=dtype).view(batch_size, -1, 3, 3)
 
-    rel_rot_mat = torch.eye(3, device=vertices.device,
-                            dtype=dtype).unsqueeze_(dim=0).repeat(batch_size,1,1)
+    rel_rot_mat = torch.eye(
+        3, device=vertices.device, dtype=dtype).unsqueeze_(dim=0).repeat(
+            batch_size, 1, 1)
     for idx in range(len(neck_kin_chain)):
         rel_rot_mat = torch.bmm(rot_mats[:, idx], rel_rot_mat)
 
@@ -343,8 +344,8 @@ def batch_rigid_transform(rot_mats, joints, parents, dtype=torch.float32):
     rel_joints[:, 1:] -= joints[:, parents[1:]]
 
     transforms_mat = transform_mat(
-        rot_mats.view(-1, 3, 3),
-        rel_joints.view(-1, 3, 1)).view(-1, joints.shape[1], 4, 4)
+        rot_mats.reshape(-1, 3, 3),
+        rel_joints.reshape(-1, 3, 1)).reshape(-1, joints.shape[1], 4, 4)
 
     transform_chain = [transforms_mat[:, 0]]
     for i in range(1, parents.shape[0]):
