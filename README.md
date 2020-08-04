@@ -67,7 +67,7 @@ To download the *SMPL* model go to [this](http://smpl.is.tue.mpg.de) (male and f
 
 ### SMPL and SMPL+H setup
 
-The loader gives the option to use any of the SMPL-X, SMPL+H and SMPL models. Depending on the model you want to use, please follow the respective download instructions. To switch between SMPL, SMPL+H and SMPL-X just change the *model_path* or *model_type* parameters. For more details please check the docs of the model classes.
+The loader gives the option to use any of the SMPL-X, SMPL+H, SMPL, and MANO models. Depending on the model you want to use, please follow the respective download instructions. To switch between MANO, SMPL, SMPL+H and SMPL-X just change the *model_path* or *model_type* parameters. For more details please check the docs of the model classes.
 Before using SMPL and SMPL+H you should follow the instructions in [tools/README.md](./tools/README.md) to remove the
 Chumpy objects from both model pkls, as well as merge the MANO parameters with SMPL+H.
 
@@ -87,6 +87,9 @@ models
 ├── smplh
 │   ├── SMPLH_FEMALE.pkl
 │   └── SMPLH_MALE.pkl
+├── mano
+|   ├── MANO_RIGHT.pkl
+|   └── MANO_LEFT.pkl
 └── smplx
     ├── SMPLX_FEMALE.npz
     ├── SMPLX_FEMALE.pkl
