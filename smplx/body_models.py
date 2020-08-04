@@ -91,6 +91,8 @@ def create(model_path, model_type='smpl',
     # If it's a folder, assume
     if osp.isdir(model_path):
         model_path = os.path.join(model_path, model_type)
+    else:
+        model_type = osp.basename(model_path).split('_')[0].lower()
 
     if model_type.lower() == 'smpl':
         return SMPL(model_path, **kwargs)
@@ -98,6 +100,8 @@ def create(model_path, model_type='smpl',
         return SMPLH(model_path, **kwargs)
     elif model_type.lower() == 'smplx':
         return SMPLX(model_path, **kwargs)
+    elif 'mano' in model_type.lower():
+        return MANO(model_path, **kwargs)
     else:
         raise ValueError('Unknown model type {}, exiting!'.format(model_type))
 
