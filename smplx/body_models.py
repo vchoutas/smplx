@@ -72,6 +72,10 @@ def create(model_path, model_type='smpl',
                 |-- SMPLX_FEMALE
                 |-- SMPLX_NEUTRAL
                 |-- SMPLX_MALE
+            |-- mano
+                |-- MANO RIGHT
+                |-- MANO LEFT
+                
         model_type: str, optional
             When model_path is a folder, then this parameter specifies  the
             type of model to be loaded
@@ -84,8 +88,8 @@ def create(model_path, model_type='smpl',
                 The PyTorch module that implements the corresponding body model
         Raises
         ------
-            ValueError: In case the model type is not one of SMPL, SMPLH or
-            SMPLX
+            ValueError: In case the model type is not one of SMPL, SMPLH, SMPLX or
+            MANO
     '''
 
     # If it's a folder, assume
