@@ -1070,7 +1070,7 @@ class MANO(SMPL):
         
         ### add only MANO tips to the extra joints
         self.vertex_joint_selector.extra_joints_idxs =\
-            torch.Tensor(list(VERTEX_IDS['mano'].values())).to(torch.long)
+            to_tensor(list(VERTEX_IDS['mano'].values()), dtype=torch.long)
         
         self.use_pca = use_pca
         self.num_pca_comps = num_pca_comps
