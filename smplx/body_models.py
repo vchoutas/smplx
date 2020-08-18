@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from typing import Optional
+from typing import Optional, Dict
 import os
 import os.path as osp
 
@@ -83,7 +83,7 @@ def create(model_path, model_type='smpl',
             |-- mano
                 |-- MANO RIGHT
                 |-- MANO LEFT
-                
+
         model_type: str, optional
             When model_path is a folder, then this parameter specifies  the
             type of model to be loaded
@@ -124,21 +124,25 @@ class SMPL(nn.Module):
     NUM_BODY_JOINTS = 23
     SHAPE_SPACE_DIM = 300
 
-    def __init__(self, model_path, data_struct=None,
-                 create_betas=True,
-                 betas=None,
-                 num_betas: int = 10,
-                 create_global_orient=True,
-                 global_orient=None,
-                 create_body_pose=True,
-                 body_pose=None,
-                 create_transl=True,
-                 transl=None,
-                 dtype=torch.float32,
-                 batch_size=1,
-                 joint_mapper=None, gender='neutral',
-                 vertex_ids=None,
-                 **kwargs):
+    def __init__(
+        self, model_path: str,
+        data_struct: Optional[Struct] = None,
+        create_betas: bool = True,
+        betas: Optional[Tensor] = None,
+        num_betas: int = 10,
+        create_global_orient: bool = True,
+        global_orient: Optional[Tensor] = None,
+        create_body_pose: bool = True,
+        body_pose: Optional[Tensor] = None,
+        create_transl: bool = True,
+        transl: Optional[Tensor] = None,
+        dtype=torch.float32,
+        batch_size: int = 1,
+        joint_mapper=None,
+        gender: str = 'neutral',
+        vertex_ids: Dict[str, int] = None,
+        **kwargs
+    ) -> None:
         ''' SMPL model constructor
 
             Parameters
@@ -254,14 +258,14 @@ class SMPL(nn.Module):
         # optimize only over one of them
         if create_global_orient:
             if global_orient is None:
-                default_global_orient = torch.zeros([batch_size, 3],
-                                                    dtype=dtype)
+                default_global_orient = torch.zeros(
+                    [batch_size, 3], dtype=dtype)
             else:
-                if 'torch.Tensor' in str(type(global_orient)):
+                if torch.is_tensor(global_orient):
                     default_global_orient = global_orient.clone().detach()
                 else:
-                    default_global_orient = torch.tensor(global_orient,
-                                                         dtype=dtype)
+                    default_global_orient = torch.tensor(
+                        global_orient, dtype=dtype)
 
             global_orient = nn.Parameter(default_global_orient,
                                          requires_grad=True)
@@ -272,7 +276,7 @@ class SMPL(nn.Module):
                 default_body_pose = torch.zeros(
                     [batch_size, self.NUM_BODY_JOINTS * 3], dtype=dtype)
             else:
-                if 'torch.Tensor' in str(type(body_pose)):
+                if torch.is_tensor(body_pose):
                     default_body_pose = body_pose.clone().detach()
                 else:
                     default_body_pose = torch.tensor(body_pose,
@@ -289,13 +293,12 @@ class SMPL(nn.Module):
             else:
                 default_transl = torch.tensor(transl, dtype=dtype)
             self.register_parameter(
-                'transl',
-                nn.Parameter(default_transl, requires_grad=True))
+                'transl', nn.Parameter(default_transl, requires_grad=True))
 
         # The vertices of the template model
-        self.register_buffer('v_template',
-                             to_tensor(to_np(data_struct.v_template),
-                                       dtype=dtype))
+        self.register_buffer(
+            'v_template',
+            to_tensor(to_np(data_struct.v_template), dtype=dtype))
 
         # The shape components
 
@@ -329,8 +332,8 @@ class SMPL(nn.Module):
         parents[0] = -1
         self.register_buffer('parents', parents)
 
-        self.register_buffer('lbs_weights',
-                             to_tensor(to_np(data_struct.weights), dtype=dtype))
+        self.register_buffer(
+            'lbs_weights', to_tensor(to_np(data_struct.weights), dtype=dtype))
 
     @property
     def num_betas(self):
@@ -340,32 +343,45 @@ class SMPL(nn.Module):
     def num_expression_coeffs(self):
         return 0
 
-    def create_mean_pose(self, data_struct):
+    def create_mean_pose(self, data_struct) -> Tensor:
         pass
 
     def name(self) -> str:
         return 'SMPL'
 
     @torch.no_grad()
-    def reset_params(self, **params_dict):
+    def reset_params(self, **params_dict) -> None:
         for param_name, param in self.named_parameters():
             if param_name in params_dict:
                 param[:] = torch.tensor(params_dict[param_name])
             else:
                 param.fill_(0)
 
-    def get_num_verts(self):
+    def get_num_verts(self) -> int:
         return self.v_template.shape[0]
 
-    def get_num_faces(self):
+    def get_num_faces(self) -> int:
         return self.faces.shape[0]
 
-    def extra_repr(self):
-        return 'Number of betas: {}'.format(self.num_betas)
+    def extra_repr(self) -> str:
+        msg = [
+            f'Gender: {self.gender.upper()}',
+            f'Number of joints: {self.J_regressor.shape[0]}',
+            f'Betas: {self.num_betas}',
+        ]
+        return '\n'.join(msg)
 
-    def forward(self, betas=None, body_pose=None, global_orient=None,
-                transl=None, return_verts=True, return_full_pose=False, pose2rot=True,
-                **kwargs):
+    def forward(
+        self,
+        betas: Optional[Tensor] = None,
+        body_pose: Optional[Tensor] = None,
+        global_orient: Optional[Tensor] = None,
+        transl: Optional[Tensor] = None,
+        return_verts=True,
+        return_full_pose: bool = False,
+        pose2rot: bool = True,
+        **kwargs
+    ) -> ModelOutput:
         ''' Forward pass for the SMPL model
 
             Parameters
@@ -421,7 +437,8 @@ class SMPL(nn.Module):
         vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot, dtype=self.dtype)
+                               self.lbs_weights, pose2rot=pose2rot,
+                               dtype=self.dtype)
 
         joints = self.vertex_joint_selector(vertices, joints)
         # Map the joints to the current dataset
@@ -449,22 +466,24 @@ class SMPLH(SMPL):
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = NUM_BODY_JOINTS + 2 * NUM_HAND_JOINTS
 
-    def __init__(self, model_path,
-                 data_struct=None,
-                 create_left_hand_pose=True,
-                 left_hand_pose=None,
-                 create_right_hand_pose=True,
-                 right_hand_pose=None,
-                 use_pca=True,
-                 num_pca_comps=6,
-                 flat_hand_mean=False,
-                 batch_size=1,
-                 gender='neutral',
-                 dtype=torch.float32,
-                 vertex_ids=None,
-                 use_compressed=True,
-                 ext='pkl',
-                 **kwargs):
+    def __init__(
+        self, model_path,
+        data_struct: Optional[Struct] = None,
+        create_left_hand_pose: bool = True,
+        left_hand_pose: Optional[Tensor] = None,
+        create_right_hand_pose: bool = True,
+        right_hand_pose: Optional[Tensor] = None,
+        use_pca: bool = True,
+        num_pca_comps: int = 6,
+        flat_hand_mean: bool = False,
+        batch_size: int = 1,
+        gender: str = 'neutral',
+        dtype=torch.float32,
+        vertex_ids=None,
+        use_compressed: bool = True,
+        ext: str = 'pkl',
+        **kwargs
+    ) -> None:
         ''' SMPLH model constructor
 
             Parameters
@@ -615,15 +634,25 @@ class SMPLH(SMPL):
 
     def extra_repr(self):
         msg = super(SMPLH, self).extra_repr()
+        msg = [msg]
         if self.use_pca:
-            msg += '\nNumber of PCA components: {}'.format(self.num_pca_comps)
-        msg += '\nFlat hand mean: {}'.format(self.flat_hand_mean)
-        return msg
+            msg.append(f'Number of PCA components: {self.num_pca_comps}')
+        msg.append(f'Flat hand mean: {self.flat_hand_mean}')
+        return '\n'.join(msg)
 
-    def forward(self, betas=None, global_orient=None, body_pose=None,
-                left_hand_pose=None, right_hand_pose=None, transl=None,
-                return_verts=True, return_full_pose=False, pose2rot=True,
-                **kwargs):
+    def forward(
+        self,
+        betas: Optional[Tensor] = None,
+        global_orient: Optional[Tensor] = None,
+        body_pose: Optional[Tensor] = None,
+        left_hand_pose: Optional[Tensor] = None,
+        right_hand_pose: Optional[Tensor] = None,
+        transl: Optional[Tensor] = None,
+        return_verts: bool = True,
+        return_full_pose: bool = False,
+        pose2rot: bool = True,
+        **kwargs
+    ) -> ModelOutput:
         '''
         '''
         # If no shape and pose parameters are passed along, then use the
@@ -696,22 +725,24 @@ class SMPLX(SMPLH):
     EXPRESSION_SPACE_DIM = 100
     NECK_IDX = 12
 
-    def __init__(self, model_path,
-                 num_expression_coeffs: int = 10,
-                 create_expression: bool = True,
-                 expression: Optional[Tensor] = None,
-                 create_jaw_pose: bool = True,
-                 jaw_pose: Optional[Tensor] = None,
-                 create_leye_pose: bool = True,
-                 leye_pose: Optional[Tensor] = None,
-                 create_reye_pose=True,
-                 reye_pose: Optional[Tensor] = None,
-                 use_face_contour: bool = False,
-                 batch_size: int = 1,
-                 gender: str = 'neutral',
-                 dtype=torch.float32,
-                 ext: str = 'npz',
-                 **kwargs):
+    def __init__(
+        self, model_path: str,
+        num_expression_coeffs: int = 10,
+        create_expression: bool = True,
+        expression: Optional[Tensor] = None,
+        create_jaw_pose: bool = True,
+        jaw_pose: Optional[Tensor] = None,
+        create_leye_pose: bool = True,
+        leye_pose: Optional[Tensor] = None,
+        create_reye_pose=True,
+        reye_pose: Optional[Tensor] = None,
+        use_face_contour: bool = False,
+        batch_size: int = 1,
+        gender: str = 'neutral',
+        dtype=torch.float32,
+        ext: str = 'npz',
+        **kwargs
+    ) -> None:
         ''' SMPLX model constructor
 
             Parameters
@@ -719,6 +750,9 @@ class SMPLX(SMPLH):
             model_path: str
                 The path to the folder or to the file where the model
                 parameters are stored
+            num_expression_coeffs: int, optional
+                Number of expression components to use
+                (default = 10).
             create_expression: bool, optional
                 Flag for creating a member variable for the expression space
                 (default = True).
@@ -897,17 +931,29 @@ class SMPLX(SMPLH):
 
     def extra_repr(self):
         msg = super(SMPLX, self).extra_repr()
-        msg += '\nGender: {}'.format(self.gender.title())
-        msg += '\nExpression Coefficients: {}'.format(
-            self.num_expression_coeffs)
-        msg += '\nUse face contour: {}'.format(self.use_face_contour)
-        return msg
+        msg = [
+            msg,
+            f'Number of Expression Coefficients: {self.num_expression_coeffs}'
+        ]
+        return '\n'.join(msg)
 
-    def forward(self, betas=None, global_orient=None, body_pose=None,
-                left_hand_pose=None, right_hand_pose=None, transl=None,
-                expression=None, jaw_pose=None, leye_pose=None, reye_pose=None,
-                return_verts=True, return_full_pose=False, pose2rot=True,
-                **kwargs):
+    def forward(
+        self,
+        betas: Optional[Tensor] = None,
+        global_orient: Optional[Tensor] = None,
+        body_pose: Optional[Tensor] = None,
+        left_hand_pose: Optional[Tensor] = None,
+        right_hand_pose: Optional[Tensor] = None,
+        transl: Optional[Tensor] = None,
+        expression: Optional[Tensor] = None,
+        jaw_pose: Optional[Tensor] = None,
+        leye_pose: Optional[Tensor] = None,
+        reye_pose: Optional[Tensor] = None,
+        return_verts: bool = True,
+        return_full_pose: bool = False,
+        pose2rot: bool = True,
+        **kwargs
+    ) -> ModelOutput:
         '''
         Forward pass for the SMPLX model
 
@@ -1056,27 +1102,32 @@ class SMPLX(SMPLH):
                              jaw_pose=jaw_pose,
                              full_pose=full_pose if return_full_pose else None)
         return output
-    
+
+
 class MANO(SMPL):
     # The hand joints are replaced by MANO
     NUM_BODY_JOINTS = 1
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = NUM_BODY_JOINTS + NUM_HAND_JOINTS
 
-    def __init__(self, model_path, is_rhand=True,
-                 data_struct=None,
-                 create_hand_pose=True,
-                 hand_pose=None,
-                 use_pca=True,
-                 num_pca_comps=6,
-                 flat_hand_mean=False,
-                 batch_size=1,
-                 gender='neutral',
-                 dtype=torch.float32,
-                 vertex_ids=None,
-                 use_compressed=True,
-                 ext='pkl',
-                 **kwargs):
+    def __init__(
+        self,
+        model_path: str,
+        is_rhand: bool = True,
+        data_struct: Optional[Struct] = None,
+        create_hand_pose: bool = True,
+        hand_pose: Optional[Tensor] = None,
+        use_pca: bool = True,
+        num_pca_comps: int = 6,
+        flat_hand_mean: bool = False,
+        batch_size: int = 1,
+        gender: str = 'neutral',
+        dtype=torch.float32,
+        vertex_ids=None,
+        use_compressed: bool = True,
+        ext: str = 'pkl',
+        **kwargs
+    ) -> None:
         ''' MANO model constructor
 
             Parameters
@@ -1123,11 +1174,13 @@ class MANO(SMPL):
         if data_struct is None:
             # Load the model
             if osp.isdir(model_path):
-                model_fn = 'MANO_{}.{ext}'.format('RIGHT' if is_rhand else 'LEFT', ext=ext)
+                model_fn = 'MANO_{}.{ext}'.format(
+                    'RIGHT' if is_rhand else 'LEFT', ext=ext)
                 mano_path = os.path.join(model_path, model_fn)
             else:
                 mano_path = model_path
-                self.is_rhand = True if 'RIGHT' in os.path.basename(model_path) else False
+                self.is_rhand = True if 'RIGHT' in os.path.basename(
+                    model_path) else False
             assert osp.exists(mano_path), 'Path {} does not exist!'.format(
                 mano_path)
 
@@ -1147,15 +1200,14 @@ class MANO(SMPL):
             model_path=model_path, data_struct=data_struct,
             batch_size=batch_size, vertex_ids=vertex_ids, gender=gender,
             use_compressed=use_compressed, dtype=dtype, ext=ext, **kwargs)
-        
-        
-        ### add only MANO tips to the extra joints
+
+        # add only MANO tips to the extra joints
         self.vertex_joint_selector.extra_joints_idxs =\
             to_tensor(list(VERTEX_IDS['mano'].values()), dtype=torch.long)
-        
+
         self.use_pca = use_pca
         self.num_pca_comps = num_pca_comps
-        if self.num_pca_comps ==45:
+        if self.num_pca_comps == 45:
             self.use_pca = False
         self.flat_hand_mean = flat_hand_mean
 
@@ -1191,7 +1243,8 @@ class MANO(SMPL):
                                     hand_pose_param)
 
         # Create the buffer for the mean pose.
-        pose_mean = self.create_mean_pose(data_struct,flat_hand_mean=flat_hand_mean)
+        pose_mean = self.create_mean_pose(
+            data_struct, flat_hand_mean=flat_hand_mean)
         pose_mean_tensor = pose_mean.clone().to(dtype)
         # pose_mean_tensor = torch.tensor(pose_mean, dtype=dtype)
         self.register_buffer('pose_mean', pose_mean_tensor)
@@ -1200,9 +1253,6 @@ class MANO(SMPL):
         # Create the array for the mean pose. If flat_hand is false, then use
         # the mean that is given by the data, rather than the flat open hand
         global_orient_mean = torch.zeros([3], dtype=self.dtype)
-        body_pose_mean = torch.zeros([self.NUM_BODY_JOINTS * 3],
-                                     dtype=self.dtype)
-
         pose_mean = torch.cat([global_orient_mean, self.hand_mean], dim=0)
         return pose_mean
 
@@ -1235,7 +1285,7 @@ class MANO(SMPL):
             hand_pose = torch.einsum(
                 'bi,ij->bj', [hand_pose, self.hand_components])
 
-        full_pose = torch.cat([global_orient,hand_pose], dim=1)
+        full_pose = torch.cat([global_orient, hand_pose], dim=1)
         full_pose += self.pose_mean
 
         if return_verts:
@@ -1247,7 +1297,7 @@ class MANO(SMPL):
 
             # # Add pre-selected extra joints that might be needed
             # joints = self.vertex_joint_selector(vertices, joints)
-            
+
             if self.joint_mapper is not None:
                 joints = self.joint_mapper(joints)
 
