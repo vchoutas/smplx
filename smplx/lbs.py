@@ -33,7 +33,6 @@ def find_dynamic_lmk_idx_and_bcoords(
     dynamic_lmk_faces_idx: Tensor,
     dynamic_lmk_b_coords: Tensor,
     neck_kin_chain: List[int],
-    dtype=torch.float32
 ) -> Tuple[Tensor, Tensor]:
     ''' Compute the faces, barycentric coordinates for the dynamic landmarks
 
@@ -70,6 +69,7 @@ def find_dynamic_lmk_idx_and_bcoords(
             will be used to compute the current dynamic landmarks.
     '''
 
+    dtype = vertices.dtype
     batch_size = vertices.shape[0]
 
     aa_pose = torch.index_select(pose.view(batch_size, -1, 3), 1,
@@ -154,7 +154,6 @@ def lbs(
     parents: Tensor,
     lbs_weights: Tensor,
     pose2rot: bool = True,
-    dtype=torch.float32
 ) -> Tuple[Tensor, Tensor]:
     ''' Performs Linear Blend Skinning with the given shape and pose parameters
 
@@ -195,7 +194,7 @@ def lbs(
     '''
 
     batch_size = max(betas.shape[0], pose.shape[0])
-    device = betas.device
+    device, dtype = betas.device, betas.dtype
 
     # Add shape contribution
     v_shaped = v_template + blend_shapes(betas, shapedirs)
@@ -208,13 +207,13 @@ def lbs(
     # N x J x 3 x 3
     ident = torch.eye(3, dtype=dtype, device=device)
     if pose2rot:
-        rot_mats = batch_rodrigues(
-            pose.view(-1, 3), dtype=dtype).view([batch_size, -1, 3, 3])
+        rot_mats = batch_rodrigues(pose.view(-1, 3)).view(
+            [batch_size, -1, 3, 3])
 
         pose_feature = (rot_mats[:, 1:, :, :] - ident).view([batch_size, -1])
         # (N x P) x (P, V * 3) -> N x V x 3
-        pose_offsets = torch.matmul(pose_feature, posedirs) \
-            .view(batch_size, -1, 3)
+        pose_offsets = torch.matmul(
+            pose_feature, posedirs).view(batch_size, -1, 3)
     else:
         pose_feature = pose[:, 1:].view(batch_size, -1, 3, 3) - ident
         rot_mats = pose.view(batch_size, -1, 3, 3)
@@ -291,7 +290,6 @@ def blend_shapes(betas: Tensor, shape_disps: Tensor) -> Tensor:
 def batch_rodrigues(
     rot_vecs: Tensor,
     epsilon: float = 1e-8,
-    dtype=torch.float32
 ) -> Tensor:
     ''' Calculates the rotation matrices for a batch of rotation vectors
         Parameters
@@ -305,7 +303,7 @@ def batch_rodrigues(
     '''
 
     batch_size = rot_vecs.shape[0]
-    device = rot_vecs.device
+    device, dtype = rot_vecs.device, rot_vecs.dtype
 
     angle = torch.norm(rot_vecs + 1e-8, dim=1, keepdim=True)
     rot_dir = rot_vecs / angle
