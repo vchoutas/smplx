@@ -35,11 +35,12 @@ def main(model_folder,
          plotting_module='pyrender',
          use_face_contour=False):
 
-    model = smplx.create(model_folder, model_type=model_type,
-                         gender=gender, use_face_contour=use_face_contour,
-                         num_betas=num_betas,
-                         num_expression_coeffs=num_expression_coeffs,
-                         ext=ext)
+    model = smplx.build_layer(
+        model_folder, model_type=model_type,
+        gender=gender, use_face_contour=use_face_contour,
+        num_betas=num_betas,
+        num_expression_coeffs=num_expression_coeffs,
+        ext=ext)
     print(model)
 
     betas, expression = None, None
