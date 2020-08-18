@@ -18,13 +18,12 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+from typing import NewType
 import os
 import os.path as osp
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+import pickle
+from dataclasses import dataclass, asdict
 
 import numpy as np
 
@@ -37,17 +36,26 @@ from .lbs import (
     lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords)
 
 from .vertex_ids import vertex_ids as VERTEX_IDS
-from .utils import Struct, to_np, to_tensor
+from .utils import Struct, to_np, to_tensor, Tensor
 from .vertex_joint_selector import VertexJointSelector
 
 
-ModelOutput = namedtuple('ModelOutput',
-                         ['vertices', 'joints', 'full_pose', 'betas',
-                          'global_orient',
-                          'body_pose', 'expression',
-                          'left_hand_pose', 'right_hand_pose',
-                          'jaw_pose'])
-ModelOutput.__new__.__defaults__ = (None,) * len(ModelOutput._fields)
+@dataclass
+class ModelOutput:
+    vertices: Tensor = None
+    joints: Tensor = None
+    full_pose: Tensor = None
+    betas: Tensor = None
+    expression: Tensor = None
+    global_orient: Tensor = None
+    body_pose: Tensor = None
+    left_hand_pose: Tensor = None
+    right_hand_pose: Tensor = None
+    jaw_pose: Tensor = None
+
+    def __getitem__(self, key):
+        data_dict = asdict(self)
+        return data_dict[key]
 
 
 def create(model_path, model_type='smpl',

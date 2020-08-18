@@ -18,8 +18,11 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 
+from typing import NewType
 import numpy as np
 import torch
+
+Tensor = NewType('Tensor', torch.Tensor)
 
 
 def to_tensor(array, dtype=torch.float32):
