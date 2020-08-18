@@ -18,15 +18,20 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 
-from typing import NewType
+from typing import NewType, Union
 import numpy as np
 import torch
 
 Tensor = NewType('Tensor', torch.Tensor)
+Array = NewType('Array', np.ndarray)
 
 
-def to_tensor(array, dtype=torch.float32):
-    if 'torch.tensor' not in str(type(array)):
+def to_tensor(
+        array: Union[Array, Tensor], dtype=torch.float32
+) -> Tensor:
+    if torch.is_tensor(array):
+        return array
+    else:
         return torch.tensor(array, dtype=dtype)
 
 

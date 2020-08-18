@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#  -*- coding: utf-8 -*-
 
 # Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG) is
 # holder of all proprietary rights on this computer program.
@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from typing import NewType
+from typing import Optional
 import os
 import os.path as osp
 
@@ -122,11 +122,12 @@ class SMPL(nn.Module):
 
     NUM_JOINTS = 23
     NUM_BODY_JOINTS = 23
-    NUM_BETAS = 10
+    SHAPE_SPACE_DIM = 300
 
     def __init__(self, model_path, data_struct=None,
                  create_betas=True,
                  betas=None,
+                 num_betas: int = 10,
                  create_global_orient=True,
                  global_orient=None,
                  create_body_pose=True,
@@ -161,6 +162,9 @@ class SMPL(nn.Module):
             body_pose: torch.tensor, optional, Bx(Body Joints * 3)
                 The default value for the body pose variable.
                 (default = None)
+            num_betas: int, optional
+                Number of shape components to use
+                (default = 10).
             create_betas: bool, optional
                 Flag for creating a member variable for the shape space
                 (default = True).
@@ -205,6 +209,15 @@ class SMPL(nn.Module):
 
         super(SMPL, self).__init__()
         self.batch_size = batch_size
+        shapedirs = data_struct.shapedirs
+        if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM +
+                self.EXPRESSION_SPACE_DIM):
+            print(f'WARNING: You are using a {self.name()} model, with only'
+                  ' 10 shape and 10 expression coefficients.')
+            num_betas = min(num_betas, 10)
+        else:
+            num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
+        self._num_betas = num_betas
 
         if vertex_ids is None:
             # SMPL and SMPL-H share the same topology, so any extra joints can
@@ -225,17 +238,16 @@ class SMPL(nn.Module):
 
         if create_betas:
             if betas is None:
-                default_betas = torch.zeros([batch_size, self.NUM_BETAS],
-                                            dtype=dtype)
+                default_betas = torch.zeros(
+                    [batch_size, self.num_betas], dtype=dtype)
             else:
-                if 'torch.Tensor' in str(type(betas)):
+                if torch.is_tensor(betas):
                     default_betas = betas.clone().detach()
                 else:
-                    default_betas = torch.tensor(betas,
-                                                 dtype=dtype)
+                    default_betas = torch.tensor(betas, dtype=dtype)
 
-            self.register_parameter('betas', nn.Parameter(default_betas,
-                                                          requires_grad=True))
+            self.register_parameter(
+                'betas', nn.Parameter(default_betas, requires_grad=True))
 
         # The tensor that contains the global rotation of the model
         # It is separated from the pose of the joints in case we wish to
@@ -286,7 +298,16 @@ class SMPL(nn.Module):
                                        dtype=dtype))
 
         # The shape components
+
         shapedirs = data_struct.shapedirs
+        if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM +
+                self.EXPRESSION_SPACE_DIM):
+            print(f'WARNING: You are using a {self.name()} model, with only'
+                  ' 10 shape and 10 expression coefficients.')
+            num_betas = min(num_betas, 10)
+        else:
+            num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
+        shapedirs = shapedirs[:, :, :num_betas]
         # The shape components
         self.register_buffer(
             'shapedirs',
@@ -311,8 +332,19 @@ class SMPL(nn.Module):
         self.register_buffer('lbs_weights',
                              to_tensor(to_np(data_struct.weights), dtype=dtype))
 
+    @property
+    def num_betas(self):
+        return self._num_betas
+
+    @property
+    def num_expression_coeffs(self):
+        return 0
+
     def create_mean_pose(self, data_struct):
         pass
+
+    def name(self) -> str:
+        return 'SMPL'
 
     @torch.no_grad()
     def reset_params(self, **params_dict):
@@ -329,7 +361,7 @@ class SMPL(nn.Module):
         return self.faces.shape[0]
 
     def extra_repr(self):
-        return 'Number of betas: {}'.format(self.NUM_BETAS)
+        return 'Number of betas: {}'.format(self.num_betas)
 
     def forward(self, betas=None, body_pose=None, global_orient=None,
                 transl=None, return_verts=True, return_full_pose=False, pose2rot=True,
@@ -578,6 +610,9 @@ class SMPLH(SMPL):
                                self.right_hand_mean], dim=0)
         return pose_mean
 
+    def name(self) -> str:
+        return 'SMPL+H'
+
     def extra_repr(self):
         msg = super(SMPLH, self).extra_repr()
         if self.use_pca:
@@ -658,18 +693,24 @@ class SMPLX(SMPLH):
     NUM_HAND_JOINTS = 15
     NUM_FACE_JOINTS = 3
     NUM_JOINTS = NUM_BODY_JOINTS + 2 * NUM_HAND_JOINTS + NUM_FACE_JOINTS
-    NUM_EXPR_COEFFS = 10
+    EXPRESSION_SPACE_DIM = 100
     NECK_IDX = 12
 
     def __init__(self, model_path,
-                 create_expression=True, expression=None,
-                 create_jaw_pose=True, jaw_pose=None,
-                 create_leye_pose=True, leye_pose=None,
-                 create_reye_pose=True, reye_pose=None,
-                 use_face_contour=False,
-                 batch_size=1, gender='neutral',
+                 num_expression_coeffs: int = 10,
+                 create_expression: bool = True,
+                 expression: Optional[Tensor] = None,
+                 create_jaw_pose: bool = True,
+                 jaw_pose: Optional[Tensor] = None,
+                 create_leye_pose: bool = True,
+                 leye_pose: Optional[Tensor] = None,
+                 create_reye_pose=True,
+                 reye_pose: Optional[Tensor] = None,
+                 use_face_contour: bool = False,
+                 batch_size: int = 1,
+                 gender: str = 'neutral',
                  dtype=torch.float32,
-                 ext='npz',
+                 ext: str = 'npz',
                  **kwargs):
         ''' SMPLX model constructor
 
@@ -797,15 +838,44 @@ class SMPLX(SMPLH):
                                            requires_grad=True)
             self.register_parameter('reye_pose', reye_pose_param)
 
+        shapedirs = data_struct.shapedirs
+        if len(shapedirs.shape) < 3:
+            shapedirs = shapedirs[:, :, None]
+        if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM +
+                self.EXPRESSION_SPACE_DIM):
+            print(f'WARNING: You are using a {self.name()} model, with only'
+                  ' 10 shape and 10 expression coefficients.')
+            expr_start_idx = 10
+            expr_end_idx = 20
+            num_expression_coeffs = min(num_expression_coeffs, 10)
+        else:
+            expr_start_idx = self.SHAPE_SPACE_DIM
+            expr_end_idx = self.SHAPE_SPACE_DIM + num_expression_coeffs
+            num_expression_coeffs = min(
+                num_expression_coeffs, self.EXPRESSION_SPACE_DIM)
+
+        self._num_expression_coeffs = num_expression_coeffs
+
+        expr_dirs = shapedirs[:, :, expr_start_idx:expr_end_idx]
+        self.register_buffer(
+            'expr_dirs', to_tensor(to_np(expr_dirs), dtype=dtype))
+
         if create_expression:
             if expression is None:
                 default_expression = torch.zeros(
-                    [batch_size, self.NUM_EXPR_COEFFS], dtype=dtype)
+                    [batch_size, self.num_expression_coeffs], dtype=dtype)
             else:
                 default_expression = torch.tensor(expression, dtype=dtype)
             expression_param = nn.Parameter(default_expression,
                                             requires_grad=True)
             self.register_parameter('expression', expression_param)
+
+    def name(self) -> str:
+        return 'SMPL-X'
+
+    @property
+    def num_expression_coeffs(self):
+        return self._num_expression_coeffs
 
     def create_mean_pose(self, data_struct, flat_hand_mean=False):
         # Create the array for the mean pose. If flat_hand is false, then use
@@ -829,14 +899,15 @@ class SMPLX(SMPLH):
         msg = super(SMPLX, self).extra_repr()
         msg += '\nGender: {}'.format(self.gender.title())
         msg += '\nExpression Coefficients: {}'.format(
-            self.NUM_EXPR_COEFFS)
+            self.num_expression_coeffs)
         msg += '\nUse face contour: {}'.format(self.use_face_contour)
         return msg
 
     def forward(self, betas=None, global_orient=None, body_pose=None,
                 left_hand_pose=None, right_hand_pose=None, transl=None,
                 expression=None, jaw_pose=None, leye_pose=None, reye_pose=None,
-                return_verts=True, return_full_pose=False, pose2rot=True, **kwargs):
+                return_verts=True, return_full_pose=False, pose2rot=True,
+                **kwargs):
         '''
         Forward pass for the SMPLX model
 
@@ -933,8 +1004,10 @@ class SMPLX(SMPLH):
             betas = betas.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
 
+        shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+
         vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               self.shapedirs, self.posedirs,
+                               shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
                                self.lbs_weights, pose2rot=pose2rot,
                                dtype=self.dtype)
