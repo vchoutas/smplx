@@ -23,18 +23,31 @@ import torch
 import smplx
 
 
-def main(model_folder, model_type='smplx', ext='npz',
-         gender='neutral', plot_joints=False,
+def main(model_folder,
+         model_type='smplx',
+         ext='npz',
+         gender='neutral',
+         plot_joints=False,
+         num_betas=10,
+         sample_shape=True,
+         sample_expression=True,
+         num_expression_coeffs=10,
          plotting_module='pyrender',
          use_face_contour=False):
 
     model = smplx.create(model_folder, model_type=model_type,
                          gender=gender, use_face_contour=use_face_contour,
+                         num_betas=num_betas,
+                         num_expression_coeffs=num_expression_coeffs,
                          ext=ext)
     print(model)
 
-    betas = torch.randn([1, 10], dtype=torch.float32)
-    expression = torch.randn([1, 10], dtype=torch.float32)
+    betas, expression = None, None
+    if sample_shape:
+        betas = torch.randn([1, model.num_betas], dtype=torch.float32)
+    if sample_expression:
+        expression = torch.randn(
+            [1, model.num_expression_coeffs], dtype=torch.float32)
 
     output = model(betas=betas, expression=expression,
                    return_verts=True)
@@ -109,6 +122,12 @@ if __name__ == '__main__':
                         help='The type of model to load')
     parser.add_argument('--gender', type=str, default='neutral',
                         help='The gender of the model')
+    parser.add_argument('--num-betas', default=10, type=int,
+                        dest='num_betas',
+                        help='Number of shape coefficients.')
+    parser.add_argument('--num-expression-coeffs', default=10, type=int,
+                        dest='num_expression_coeffs',
+                        help='Number of expression coefficients.')
     parser.add_argument('--plotting-module', type=str, default='pyrender',
                         dest='plotting_module',
                         choices=['pyrender', 'matplotlib', 'open3d'],
@@ -118,6 +137,14 @@ if __name__ == '__main__':
     parser.add_argument('--plot-joints', default=False,
                         type=lambda arg: arg.lower() in ['true', '1'],
                         help='The path to the model folder')
+    parser.add_argument('--sample-shape', default=True,
+                        dest='sample_shape',
+                        type=lambda arg: arg.lower() in ['true', '1'],
+                        help='Sample a random shape')
+    parser.add_argument('--sample-expression', default=True,
+                        dest='sample_expression',
+                        type=lambda arg: arg.lower() in ['true', '1'],
+                        help='Sample a random expression')
     parser.add_argument('--use-face-contour', default=False,
                         type=lambda arg: arg.lower() in ['true', '1'],
                         help='Compute the contour of the face')
@@ -131,8 +158,16 @@ if __name__ == '__main__':
     gender = args.gender
     ext = args.ext
     plotting_module = args.plotting_module
+    num_betas = args.num_betas
+    num_expression_coeffs = args.num_expression_coeffs
+    sample_shape = args.sample_shape
+    sample_expression = args.sample_expression
 
     main(model_folder, model_type, ext=ext,
          gender=gender, plot_joints=plot_joints,
+         num_betas=num_betas,
+         num_expression_coeffs=num_expression_coeffs,
+         sample_shape=sample_shape,
+         sample_expression=sample_expression,
          plotting_module=plotting_module,
          use_face_contour=use_face_contour)
