@@ -30,13 +30,13 @@ def merge_models(smplh_fn, mano_left_fn, mano_right_fn,
                  output_folder='output'):
 
     with open(smplh_fn, 'rb') as body_file:
-        body_data = pickle.load(body_file)
+        body_data = pickle.load(body_file, encoding='latin1')
 
     with open(mano_left_fn, 'rb') as lhand_file:
-        lhand_data = pickle.load(lhand_file)
+        lhand_data = pickle.load(lhand_file, encoding='latin1')
 
     with open(mano_right_fn, 'rb') as rhand_file:
-        rhand_data = pickle.load(rhand_file)
+        rhand_data = pickle.load(rhand_file, encoding='latin1')
 
     out_fn = osp.split(smplh_fn)[1]
 
@@ -50,7 +50,7 @@ def merge_models(smplh_fn, mano_left_fn, mano_right_fn,
     output_data['hands_meanl'] = lhand_data['hands_mean']
     output_data['hands_meanr'] = rhand_data['hands_mean']
 
-    for key, data in output_data.iteritems():
+    for key, data in output_data.items():
         if 'chumpy' in str(type(data)):
             output_data[key] = np.array(data)
         else:
