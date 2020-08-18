@@ -66,5 +66,12 @@ vertex_ids = {
         'RBigToe':		8463,
         'RSmallToe': 	8474,
         'RHeel':  		8635
-    }
+    },
+    'mano': {
+            'thumb':		744,
+            'index':		320,
+            'middle':		443,
+            'ring':		    554,
+            'pinky':		671,
+        }
 }
