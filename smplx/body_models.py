@@ -1167,10 +1167,13 @@ class SMPLX(SMPLH):
         lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
             self.batch_size, 1, 1)
         if self.use_face_contour:
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = find_dynamic_lmk_idx_and_bcoords(
+            lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
                 self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain, dtype=self.dtype)
+                self.neck_kin_chain,
+                pose2rot=True,
+            )
+            dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
 
             lmk_faces_idx = torch.cat([lmk_faces_idx,
                                        dyn_lmk_faces_idx], 1)
@@ -1356,9 +1359,12 @@ class SMPLXLayer(SMPLX):
             self.batch_size, 1, 1)
         if self.use_face_contour:
             lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
-                vertices, full_pose, self.dynamic_lmk_faces_idx,
+                vertices, full_pose,
+                self.dynamic_lmk_faces_idx,
                 self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain, dtype=self.dtype)
+                self.neck_kin_chain,
+                pose2rot=False,
+            )
             dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
 
             lmk_faces_idx = torch.cat([lmk_faces_idx, dyn_lmk_faces_idx], 1)
@@ -1877,7 +1883,8 @@ class FLAME(SMPL):
 
             dynamic_lmk_b_coords = torch.tensor(
                 contour_embeddings['lmk_b_coords'], dtype=dtype)
-            self.register_buffer('dynamic_lmk_b_coords', dynamic_lmk_b_coords)
+            self.register_buffer(
+                'dynamic_lmk_bary_coords', dynamic_lmk_b_coords)
 
             neck_kin_chain = find_joint_kin_chain(self.NECK_IDX, self.parents)
             self.register_buffer(
@@ -2000,7 +2007,9 @@ class FLAME(SMPL):
             lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
                 self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain, dtype=self.dtype)
+                self.neck_kin_chain,
+                pose2rot=True,
+            )
             dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
             lmk_faces_idx = torch.cat([lmk_faces_idx,
                                        dyn_lmk_faces_idx], 1)
@@ -2154,7 +2163,9 @@ class FLAMELayer(FLAME):
             lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
                 self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain, dtype=self.dtype)
+                self.neck_kin_chain,
+                pose2rot=False,
+            )
             dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
             lmk_faces_idx = torch.cat([lmk_faces_idx,
                                        dyn_lmk_faces_idx], 1)
