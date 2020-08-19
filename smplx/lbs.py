@@ -33,6 +33,7 @@ def find_dynamic_lmk_idx_and_bcoords(
     dynamic_lmk_faces_idx: Tensor,
     dynamic_lmk_b_coords: Tensor,
     neck_kin_chain: List[int],
+    pose2rot: bool = True,
 ) -> Tuple[Tensor, Tensor]:
     ''' Compute the faces, barycentric coordinates for the dynamic landmarks
 
@@ -72,10 +73,14 @@ def find_dynamic_lmk_idx_and_bcoords(
     dtype = vertices.dtype
     batch_size = vertices.shape[0]
 
-    aa_pose = torch.index_select(pose.view(batch_size, -1, 3), 1,
-                                 neck_kin_chain)
-    rot_mats = batch_rodrigues(
-        aa_pose.view(-1, 3), dtype=dtype).view(batch_size, -1, 3, 3)
+    if pose2rot:
+        aa_pose = torch.index_select(pose.view(batch_size, -1, 3), 1,
+                                     neck_kin_chain)
+        rot_mats = batch_rodrigues(
+            aa_pose.view(-1, 3)).view(batch_size, -1, 3, 3)
+    else:
+        rot_mats = torch.index_select(
+            pose.view(batch_size, -1, 3, 3), 1, neck_kin_chain)
 
     rel_rot_mat = torch.eye(
         3, device=vertices.device, dtype=dtype).unsqueeze_(dim=0).repeat(
