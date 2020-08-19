@@ -30,7 +30,7 @@ from .lbs import (
 
 from .vertex_ids import vertex_ids as VERTEX_IDS
 from .utils import (
-    Struct, to_np, to_tensor, Tensor,
+    Struct, to_np, to_tensor, Tensor, Array,
     SMPLOutput,
     SMPLHOutput,
     SMPLXOutput,
@@ -63,6 +63,7 @@ class SMPL(nn.Module):
         joint_mapper=None,
         gender: str = 'neutral',
         vertex_ids: Dict[str, int] = None,
+        v_template: Optional[Union[Tensor, Array]] = None,
         **kwargs
     ) -> None:
         ''' SMPL model constructor
@@ -222,10 +223,12 @@ class SMPL(nn.Module):
             self.register_parameter(
                 'transl', nn.Parameter(default_transl, requires_grad=True))
 
+        if v_template is None:
+            v_template = data_struct.v_template
+        if not torch.is_tensor(v_template):
+            v_template = to_tensor(to_np(v_template), dtype=dtype)
         # The vertices of the template model
-        self.register_buffer(
-            'v_template',
-            to_tensor(to_np(data_struct.v_template), dtype=dtype))
+        self.register_buffer('v_template', v_template)
 
         j_regressor = to_tensor(to_np(
             data_struct.J_regressor), dtype=dtype)
