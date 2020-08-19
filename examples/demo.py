@@ -107,7 +107,14 @@ def main(model_folder,
         mesh.compute_vertex_normals()
         mesh.paint_uniform_color([0.3, 0.3, 0.3])
 
-        o3d.visualization.draw_geometries([mesh])
+        geometry = [mesh]
+        if plot_joints:
+            joints_pcl = o3d.geometry.PointCloud()
+            joints_pcl.points = o3d.utility.Vector3dVector(joints)
+            joints_pcl.paint_uniform_color([0.7, 0.3, 0.3])
+            geometry.append(joints_pcl)
+
+        o3d.visualization.draw_geometries(geometry)
     else:
         raise ValueError('Unknown plotting_module: {}'.format(plotting_module))
 
