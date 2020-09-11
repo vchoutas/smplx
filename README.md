@@ -8,6 +8,7 @@
 ## Table of Contents
   * [License](#license)
   * [Description](#description)
+  * [News](#news)
   * [Installation](#installation)
   * [Downloading the model](#downloading-the-model)
   * [Loading SMPL-X, SMPL+H and SMPL](#loading-smpl-x-smplh-and-smpl) 
@@ -41,6 +42,9 @@ which include joints for the neck, jaw, eyeballs and fingers.
 SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameters, β the shape parameters and
 ψ the facial expression parameters.
 
+## News
+
+- 20 August 2020: The full shape and expression space of SMPL-X are now available.
 
 ## Installation
 
