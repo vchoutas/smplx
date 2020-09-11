@@ -304,7 +304,7 @@ class SMPL(nn.Module):
                 If given, ignore the member variable and use it as the global
                 rotation of the body. Useful if someone wishes to predicts this
                 with an external model. (default=None)
-            betas: torch.tensor, optional, shape Bx10
+            betas: torch.tensor, optional, shape BxN_b
                 If given, ignore the member variable `betas` and use it
                 instead. For example, it can used if shape parameters
                 `betas` are predicted from some external model.
@@ -403,24 +403,22 @@ class SMPLLayer(SMPL):
 
             Parameters
             ----------
-            global_orient: torch.tensor, optional, shape Bx3
-                If given, ignore the member variable and use it as the global
-                rotation of the body. Useful if someone wishes to predicts this
-                with an external model. (default=None)
-            betas: torch.tensor, optional, shape Bx10
-                If given, ignore the member variable `betas` and use it
-                instead. For example, it can used if shape parameters
+            global_orient: torch.tensor, optional, shape Bx3x3
+                Global rotation of the body.  Useful if someone wishes to
+                predicts this with an external model. It is expected to be in
+                rotation matrix format.  (default=None)
+            betas: torch.tensor, optional, shape BxN_b
+                Shape parameters. For example, it can used if shape parameters
                 `betas` are predicted from some external model.
                 (default=None)
-            body_pose: torch.tensor, optional, shape Bx(J*3)
-                If given, ignore the member variable `body_pose` and use it
-                instead. For example, it can used if someone predicts the
+            body_pose: torch.tensor, optional, shape BxJx3x3
+                Body pose. For example, it can used if someone predicts the
                 pose of the body joints are predicted from some external model.
                 It should be a tensor that contains joint rotations in
-                axis-angle format. (default=None)
+                rotation matrix format. (default=None)
             transl: torch.tensor, optional, shape Bx3
-                If given, ignore the member variable `transl` and use it
-                instead. For example, it can used if the translation
+                Translation vector of the body.
+                For example, it can used if the translation
                 `transl` is predicted from some external model.
                 (default=None)
             return_verts: bool, optional
@@ -762,7 +760,44 @@ class SMPLHLayer(SMPLH):
         pose2rot: bool = True,
         **kwargs
     ) -> SMPLHOutput:
-        '''
+        ''' Forward pass for the SMPL+H model
+
+            Parameters
+            ----------
+            global_orient: torch.tensor, optional, shape Bx3x3
+                Global rotation of the body. Useful if someone wishes to
+                predicts this with an external model. It is expected to be in
+                rotation matrix format. (default=None)
+            betas: torch.tensor, optional, shape BxN_b
+                Shape parameters. For example, it can used if shape parameters
+                `betas` are predicted from some external model.
+                (default=None)
+            body_pose: torch.tensor, optional, shape BxJx3x3
+                If given, ignore the member variable `body_pose` and use it
+                instead. For example, it can used if someone predicts the
+                pose of the body joints are predicted from some external model.
+                It should be a tensor that contains joint rotations in
+                rotation matrix format. (default=None)
+            left_hand_pose: torch.tensor, optional, shape Bx15x3x3
+                If given, contains the pose of the left hand.
+                It should be a tensor that contains joint rotations in
+                rotation matrix format. (default=None)
+            right_hand_pose: torch.tensor, optional, shape Bx15x3x3
+                If given, contains the pose of the right hand.
+                It should be a tensor that contains joint rotations in
+                rotation matrix format. (default=None)
+            transl: torch.tensor, optional, shape Bx3
+                Translation vector of the body.
+                For example, it can used if the translation
+                `transl` is predicted from some external model.
+                (default=None)
+            return_verts: bool, optional
+                Return the vertices. (default=True)
+            return_full_pose: bool, optional
+                Returns the full axis-angle pose vector (default=False)
+
+            Returns
+            -------
         '''
         model_vars = [betas, global_orient, body_pose, transl, left_hand_pose,
                       right_hand_pose]
@@ -1075,12 +1110,12 @@ class SMPLX(SMPLH):
                 If given, ignore the member variable and use it as the global
                 rotation of the body. Useful if someone wishes to predicts this
                 with an external model. (default=None)
-            betas: torch.tensor, optional, shape Bx10
+            betas: torch.tensor, optional, shape BxN_b
                 If given, ignore the member variable `betas` and use it
                 instead. For example, it can used if shape parameters
                 `betas` are predicted from some external model.
                 (default=None)
-            expression: torch.tensor, optional, shape Bx10
+            expression: torch.tensor, optional, shape BxN_e
                 If given, ignore the member variable `expression` and use it
                 instead. For example, it can used if expression parameters
                 `expression` are predicted from some external model.
@@ -1261,40 +1296,40 @@ class SMPLXLayer(SMPLX):
 
             Parameters
             ----------
-            global_orient: torch.tensor, optional, shape Bx3
+            global_orient: torch.tensor, optional, shape Bx3x3
                 If given, ignore the member variable and use it as the global
                 rotation of the body. Useful if someone wishes to predicts this
-                with an external model. (default=None)
-            betas: torch.tensor, optional, shape Bx10
+                with an external model. It is expected to be in rotation matrix
+                format. (default=None)
+            betas: torch.tensor, optional, shape BxN_b
                 If given, ignore the member variable `betas` and use it
                 instead. For example, it can used if shape parameters
                 `betas` are predicted from some external model.
                 (default=None)
-            expression: torch.tensor, optional, shape Bx10
-                If given, ignore the member variable `expression` and use it
-                instead. For example, it can used if expression parameters
+            expression: torch.tensor, optional, shape BxN_e
+                Expression coefficients.
+                For example, it can used if expression parameters
                 `expression` are predicted from some external model.
-            body_pose: torch.tensor, optional, shape Bx(J*3)
+            body_pose: torch.tensor, optional, shape BxJx3x3
                 If given, ignore the member variable `body_pose` and use it
                 instead. For example, it can used if someone predicts the
                 pose of the body joints are predicted from some external model.
                 It should be a tensor that contains joint rotations in
-                axis-angle format. (default=None)
-            left_hand_pose: torch.tensor, optional, shape BxP
-                If given, ignore the member variable `left_hand_pose` and
-                use this instead. It should either contain PCA coefficients or
-                joint rotations in axis-angle format.
-            right_hand_pose: torch.tensor, optional, shape BxP
-                If given, ignore the member variable `right_hand_pose` and
-                use this instead. It should either contain PCA coefficients or
-                joint rotations in axis-angle format.
+                rotation matrix format. (default=None)
+            left_hand_pose: torch.tensor, optional, shape Bx15x3x3
+                If given, contains the pose of the left hand.
+                It should be a tensor that contains joint rotations in
+                rotation matrix format. (default=None)
+            right_hand_pose: torch.tensor, optional, shape Bx15x3x3
+                If given, contains the pose of the right hand.
+                It should be a tensor that contains joint rotations in
+                rotation matrix format. (default=None)
             jaw_pose: torch.tensor, optional, shape Bx3x3
-                If given, ignore the member variable `jaw_pose` and
-                use this instead. It should either joint rotations in
-                axis-angle format.
+                Jaw pose. It should either joint rotations in
+                rotation matrix format.
             transl: torch.tensor, optional, shape Bx3
-                If given, ignore the member variable `transl` and use it
-                instead. For example, it can used if the translation
+                Translation vector of the body.
+                For example, it can used if the translation
                 `transl` is predicted from some external model.
                 (default=None)
             return_verts: bool, optional
@@ -2092,30 +2127,24 @@ class FLAMELayer(FLAME):
 
             Parameters
             ----------
-            global_orient: torch.tensor, optional, shape Bx3
-                If given, ignore the member variable and use it as the global
-                rotation of the body. Useful if someone wishes to predicts this
-                with an external model. (default=None)
-            betas: torch.tensor, optional, shape Bx10
-                If given, ignore the member variable `betas` and use it
-                instead. For example, it can used if shape parameters
+            global_orient: torch.tensor, optional, shape Bx3x3
+                Global rotation of the body. Useful if someone wishes to
+                predicts this with an external model. It is expected to be in
+                rotation matrix format. (default=None)
+            betas: torch.tensor, optional, shape BxN_b
+                Shape parameters. For example, it can used if shape parameters
                 `betas` are predicted from some external model.
                 (default=None)
-            expression: torch.tensor, optional, shape Bx10
+            expression: torch.tensor, optional, shape BxN_e
                 If given, ignore the member variable `expression` and use it
                 instead. For example, it can used if expression parameters
                 `expression` are predicted from some external model.
-            jaw_pose: torch.tensor, optional, shape Bx3
-                If given, ignore the member variable `jaw_pose` and
-                use this instead. It should either joint rotations in
-                axis-angle format.
-            jaw_pose: torch.tensor, optional, shape Bx3
-                If given, ignore the member variable `jaw_pose` and
-                use this instead. It should either joint rotations in
-                axis-angle format.
+            jaw_pose: torch.tensor, optional, shape Bx3x3
+                Jaw pose. It should either joint rotations in
+                rotation matrix format.
             transl: torch.tensor, optional, shape Bx3
-                If given, ignore the member variable `transl` and use it
-                instead. For example, it can used if the translation
+                Translation vector of the body.
+                For example, it can used if the translation
                 `transl` is predicted from some external model.
                 (default=None)
             return_verts: bool, optional
