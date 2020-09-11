@@ -16,6 +16,7 @@
     * [Model loading](https://github.com/vchoutas/smplx#model-loading)
   * [MANO and FLAME correspondences](#mano-and-flame-correspondences) 
   * [Example](#example)
+  * [Modifying the global pose of the model](#modifying-the-global-pose-of-the-model)
   * [Citation](#citation)
   * [Acknowledgments](#acknowledgments)
   * [Contact](#contact)
@@ -131,6 +132,16 @@ script to visualize the results. For this step you have to install the [pyrender
 `python examples/demo.py --model-folder $SMPLX_FOLDER --plot-joints=True --gender="neutral"`
 
 ![SMPL-X Examples](./images/example.png)
+
+## Modifying the global pose of the model
+
+If you want to modify the global pose of the model, i.e. the root rotation and
+translation, to a new coordinate system for example, you need to take into
+account that the model rotation uses the pelvis as the center of rotation. A
+more detailed description can be found in the following
+[link](https://www.dropbox.com/scl/fi/zkatuv5shs8d4tlwr8ecc/Change-parameters-to-new-coordinate-system.paper?dl=0&rlkey=lotq1sh6wzkmyttisc05h0in0).
+If something is not clear, please let me know so that I can update the
+description.
 
 ## Citation
 
