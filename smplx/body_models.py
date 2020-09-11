@@ -431,13 +431,16 @@ class SMPLLayer(SMPL):
             Returns
             -------
         '''
+        model_vars = [betas, global_orient, body_pose, transl]
+        batch_size = 1
+        for var in model_vars:
+            if var is None:
+                continue
+            batch_size = max(batch_size, len(var))
         device, dtype = self.shapedirs.device, self.shapedirs.dtype
         if global_orient is None:
-            batch_size = 1
             global_orient = torch.eye(3, device=device, dtype=dtype).view(
                 1, 1, 3, 3).expand(batch_size, -1, -1, -1).contiguous()
-        else:
-            batch_size = global_orient.shape[0]
         if body_pose is None:
             body_pose = torch.eye(3, device=device, dtype=dtype).view(
                 1, 1, 3, 3).expand(
@@ -675,6 +678,7 @@ class SMPLH(SMPL):
     ) -> SMPLHOutput:
         '''
         '''
+
         # If no shape and pose parameters are passed along, then use the
         # ones from the module
         global_orient = (global_orient if global_orient is not None else
@@ -702,7 +706,7 @@ class SMPLH(SMPL):
                                right_hand_pose], dim=1)
         full_pose += self.pose_mean
 
-        vertices, joints = lbs(self.betas, full_pose, self.v_template,
+        vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
                                self.lbs_weights, pose2rot=pose2rot)
@@ -760,13 +764,17 @@ class SMPLHLayer(SMPLH):
     ) -> SMPLHOutput:
         '''
         '''
+        model_vars = [betas, global_orient, body_pose, transl, left_hand_pose,
+                      right_hand_pose]
+        batch_size = 1
+        for var in model_vars:
+            if var is None:
+                continue
+            batch_size = max(batch_size, len(var))
         device, dtype = self.shapedirs.device, self.shapedirs.dtype
         if global_orient is None:
-            batch_size = 1
             global_orient = torch.eye(3, device=device, dtype=dtype).view(
                 1, 1, 3, 3).expand(batch_size, -1, -1, -1).contiguous()
-        else:
-            batch_size = global_orient.shape[0]
         if body_pose is None:
             body_pose = torch.eye(3, device=device, dtype=dtype).view(
                 1, 1, 3, 3).expand(batch_size, 21, -1, -1).contiguous()
@@ -1300,12 +1308,17 @@ class SMPLXLayer(SMPLX):
         '''
         device, dtype = self.shapedirs.device, self.shapedirs.dtype
 
+        model_vars = [betas, global_orient, body_pose, transl,
+                      expression, left_hand_pose, right_hand_pose, jaw_pose]
+        batch_size = 1
+        for var in model_vars:
+            if var is None:
+                continue
+            batch_size = max(batch_size, len(var))
+
         if global_orient is None:
-            batch_size = 1
             global_orient = torch.eye(3, device=device, dtype=dtype).view(
                 1, 1, 3, 3).expand(batch_size, -1, -1, -1).contiguous()
-        else:
-            batch_size = global_orient.shape[0]
         if body_pose is None:
             body_pose = torch.eye(3, device=device, dtype=dtype).view(
                 1, 1, 3, 3).expand(
@@ -1356,7 +1369,7 @@ class SMPLXLayer(SMPLX):
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
         lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            self.batch_size, 1, 1)
+            batch_size, 1, 1)
         if self.use_face_contour:
             lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose,
