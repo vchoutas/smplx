@@ -393,9 +393,6 @@ def batch_rigid_transform(
     # The last column of the transformations contains the posed joints
     posed_joints = transforms[:, :, :3, 3]
 
-    # The last column of the transformations contains the posed joints
-    posed_joints = transforms[:, :, :3, 3]
-
     joints_homogen = F.pad(joints, [0, 0, 0, 1])
 
     rel_transforms = transforms - F.pad(
