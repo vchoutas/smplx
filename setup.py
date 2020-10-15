@@ -27,7 +27,7 @@ URL = 'http://smpl-x.is.tuebingen.mpg.de'
 EMAIL = 'vassilis.choutas@tuebingen.mpg.de'
 AUTHOR = 'Vassilis Choutas'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.1.24'
+VERSION = '0.1.25'
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -76,4 +76,4 @@ setup(name=NAME,
           'matplotlib': matplotlib_reqs,
           'all': pyrender_reqs + matplotlib_reqs + open3d_reqs
       },
-      packages=['smplx', 'tools'])
+      packages=['smplx'])
