@@ -45,6 +45,8 @@ SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameters, 
 
 ## News
 
+- 23 September 2020: A UV map is now available for SMPL-X, please check the
+  Downloads section of the website.
 - 20 August 2020: The full shape and expression space of SMPL-X are now available.
 
 ## Installation
