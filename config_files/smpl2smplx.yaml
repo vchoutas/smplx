@@ -1,0 +1,26 @@
+datasets:
+    mesh_folder:
+        data_folder: 'transfer_data/meshes/smpl'
+deformation_transfer_path: 'transfer_data/smpl2smplx_deftrafo_setup.pkl'
+mask_ids_fname: 'smplx_mask_ids.npy'
+summary_steps: 100
+
+edge_fitting:
+    per_part: False
+
+optim:
+    type: 'trust-ncg'
+    maxiters: 100
+    gtol: 1e-06
+
+body_model:
+    model_type: "smplx"
+    gender: "neutral"
+    folder: "transfer_data/body_models"
+    use_compressed: False
+    use_face_contour: True
+    smplx:
+        betas:
+            num: 10
+        expression:
+            num: 10
