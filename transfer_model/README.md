@@ -154,7 +154,7 @@ python vis_correspondences.py --exp-cfg configs/smpl2smplx.yaml --exp-opts color
 ```
 You should then see the following image. Points with similar color are in
 correspondence.
-![Correspondence example](./images/smpl_smplx_correspondence.png)
+![Correspondence example](./docs/images/smpl_smplx_correspondence.png)
 
 ## Citation
 
