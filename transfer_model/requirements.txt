@@ -1,0 +1,10 @@
+numpy>=1.16.2
+torch>=1.0.1.post2
+dataclasses>=0.6
+pyrender>=0.1.23
+shapely
+trimesh>=2.37.6
+open3d
+smplx
+omegaconf
+loguru
