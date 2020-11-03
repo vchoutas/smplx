@@ -45,6 +45,10 @@ SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameters, 
 
 ## News
 
+- 3 November 2020: We release the code to transfer between the models in the
+  SMPL family. For more details on the code, go to this [readme
+  file](./transfer_model/README.md). A detailed explanation on how the mappings
+  were extracted can be found [here](./transfer_model/docs/transfer.md).
 - 23 September 2020: A UV map is now available for SMPL-X, please check the
   Downloads section of the website.
 - 20 August 2020: The full shape and expression space of SMPL-X are now available.
