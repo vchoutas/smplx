@@ -73,8 +73,9 @@ transfer_data
 
 To run the code to convert SMPL meshes to SMPL-X parameters use the following command:
   ```Shell
-  python main.py --exp-cfg config_files/smpl2smplx.yaml
+  python -m transfer_model --exp-cfg config_files/smpl2smplx.yaml
   ```
+This should be run from the top directory of the repository.
 
 The file *smpl2smplx.yaml* contains a sample configuration that reads meshes from a folder,
 processes them and returns pkl files with SMPL-X parameters. To run on your own data create a folder
@@ -97,10 +98,11 @@ SMPL cannot model them.
 
 ### SMPL+H to SMPL
 
-To run the code to convert SMPL+H meshes to SMPL parameters use the following command:
+To run the code to convert SMPL+H meshes to SMPL parameters use the following command from the root `smplx` directory:
   ```Shell
-  python main.py --exp-cfg config_files/smplh2smpl.yaml
+  python -m transfer_model --exp-cfg config_files/smplh2smpl.yaml
   ```
+This should be run from the top directory of the repository.
 
 The file *smplh2smpl.yaml* contains a sample configuration that reads meshes from a folder,
 processes them and returns pkl files with SMPL parameters. To run on your own data create a folder
@@ -113,8 +115,9 @@ hands.
 
 To run the code to convert SMPL meshes to SMPL+H parameters use the following command:
   ```Shell
-  python main.py --exp-cfg config_files/smpl2smplh.yaml
+  python -m transfer_model --exp-cfg config_files/smpl2smplh.yaml
   ```
+This should be run from the top directory of the repository.
 
 The file *smpl2smplh.yaml* contains a sample configuration that reads meshes from a folder,
 processes them and returns pkl files with SMPL parameters. To run on your own data create a folder
@@ -124,8 +127,9 @@ with SMPL meshes, in either ply or obj format, change the path in the config fil
 
 To run the code to convert SMPL+H meshes to SMPL-X parameters use the following command:
   ```Shell
-  python main.py --exp-cfg config_files/smplh2smplx.yaml
+  python -m transfer_model --exp-cfg config_files/smplh2smplx.yaml
   ```
+This should be run from the top directory of the repository.
 
 The file *smplh2smplx.yaml* contains a sample configuration that reads meshes from a folder,
 processes them and returns pkl files with SMPL-X parameters. To run on your own data create a folder
@@ -136,8 +140,9 @@ with SMPL+H meshes, in either ply or obj format, change the path in the config f
 
 To run the code to convert SMPL-X meshes to SMPL+H parameters use the following command:
   ```Shell
-  python main.py --exp-cfg config_files/smplx2smplh.yaml
+  python -m transfer_model --exp-cfg config_files/smplx2smplh.yaml
   ```
+This should be run from the top directory of the repository.
 
 The file *smplx2smpl.yaml* contains a sample configuration that reads meshes from a folder,
 processes them and returns pkl files with SMPL+H parameters. To run on your own data create a folder
