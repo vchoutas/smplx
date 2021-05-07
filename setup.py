@@ -27,7 +27,7 @@ URL = 'http://smpl-x.is.tuebingen.mpg.de'
 EMAIL = 'vassilis.choutas@tuebingen.mpg.de'
 AUTHOR = 'Vassilis Choutas'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.1.26'
+VERSION = '0.1.27'
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -68,7 +68,6 @@ setup(name=NAME,
       install_requires=[
           'numpy>=1.16.2',
           'torch>=1.0.1.post2',
-          'torchgeometry>=0.1.2'
       ],
       extras_require={
           'pyrender': pyrender_reqs,
