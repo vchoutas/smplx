@@ -24,9 +24,10 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+from loguru import logger
 
 from .lbs import (
-    lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords)
+    lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords, blend_shapes)
 
 from .vertex_ids import vertex_ids as VERTEX_IDS
 from .utils import (
@@ -246,8 +247,8 @@ class SMPL(nn.Module):
         parents[0] = -1
         self.register_buffer('parents', parents)
 
-        self.register_buffer(
-            'lbs_weights', to_tensor(to_np(data_struct.weights), dtype=dtype))
+        lbs_weights = to_tensor(to_np(data_struct.weights), dtype=dtype)
+        self.register_buffer('lbs_weights', lbs_weights)
 
     @property
     def num_betas(self):
@@ -284,6 +285,14 @@ class SMPL(nn.Module):
             f'Betas: {self.num_betas}',
         ]
         return '\n'.join(msg)
+
+    def forward_shape(
+        self,
+        betas: Optional[Tensor] = None,
+    ) -> SMPLOutput:
+        betas = betas if betas is not None else self.betas
+        v_shaped = self.v_template + blend_shapes(betas, self.shapedirs)
+        return SMPLOutput(vertices=v_shaped, betas=betas, v_shaped=v_shaped)
 
     def forward(
         self,
@@ -1099,6 +1108,7 @@ class SMPLX(SMPLH):
         return_verts: bool = True,
         return_full_pose: bool = False,
         pose2rot: bool = True,
+        return_shaped: bool = True,
         **kwargs
     ) -> SMPLXOutput:
         '''
@@ -1180,10 +1190,14 @@ class SMPLX(SMPLH):
             right_hand_pose = torch.einsum(
                 'bi,ij->bj', [right_hand_pose, self.right_hand_components])
 
-        full_pose = torch.cat([global_orient, body_pose,
-                               jaw_pose, leye_pose, reye_pose,
-                               left_hand_pose,
-                               right_hand_pose], dim=1)
+        full_pose = torch.cat([global_orient.reshape(-1, 1, 3),
+                               body_pose.reshape(-1, self.NUM_BODY_JOINTS, 3),
+                               jaw_pose.reshape(-1, 1, 3),
+                               leye_pose.reshape(-1, 1, 3),
+                               reye_pose.reshape(-1, 1, 3),
+                               left_hand_pose.reshape(-1, 15, 3),
+                               right_hand_pose.reshape(-1, 15, 3)],
+                              dim=1).reshape(-1, 165)
 
         # Add the mean pose of the model. Does not affect the body, only the
         # hands when flat_hand_mean == False
@@ -1194,7 +1208,7 @@ class SMPLX(SMPLH):
         # Concatenate the shape and expression coefficients
         scale = int(batch_size / betas.shape[0])
         if scale > 1:
-            betas = betas.expand(scale, -1)
+           betas = betas.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
@@ -1241,6 +1255,9 @@ class SMPLX(SMPLH):
             joints += transl.unsqueeze(dim=1)
             vertices += transl.unsqueeze(dim=1)
 
+        v_shaped = None
+        if return_shaped:
+            v_shaped = self.v_template + blend_shapes(betas, self.shapedirs)
         output = SMPLXOutput(vertices=vertices if return_verts else None,
                              joints=joints,
                              betas=betas,
@@ -1250,6 +1267,7 @@ class SMPLX(SMPLH):
                              left_hand_pose=left_hand_pose,
                              right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
+                             v_shaped=v_shaped,
                              full_pose=full_pose if return_full_pose else None)
         return output
 
@@ -1399,7 +1417,9 @@ class SMPLXLayer(SMPLX):
         vertices, joints = lbs(shape_components, full_pose, self.v_template,
                                shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=False)
+                               self.lbs_weights,
+                               pose2rot=False,
+                               )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
@@ -2050,7 +2070,7 @@ class FLAME(SMPL):
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
         lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            self.batch_size, 1, 1)
+            batch_size, 1, 1)
         if self.use_face_contour:
             lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
@@ -2200,7 +2220,7 @@ class FLAMELayer(FLAME):
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
         lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            self.batch_size, 1, 1)
+            batch_size, 1, 1)
         if self.use_face_contour:
             lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
