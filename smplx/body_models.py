@@ -140,21 +140,20 @@ class SMPL(nn.Module):
 
         super(SMPL, self).__init__()
         self.batch_size = batch_size
-       	shapedirs = data_struct.shapedirs
+        shapedirs = data_struct.shapedirs
+        if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM):
+            print(f'WARNING: You are using a {self.name()} model, with only'
+                  ' 10 shape coefficients.')
+            num_betas = min(num_betas, 10)
+        else:
+            num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
+
         if self.age=='kid':
             v_template_smil = np.load(kid_template_path)
             v_template_smil -= np.mean(v_template_smil, axis=0)
-            v_template_smil = np.expand_dims(v_template_smil,axis=2)
-            v_template_diff = v_template_smil - np.expand_dims(data_struct.v_template,axis=2)
-            shapedirs = np.concatenate((shapedirs[:,:,:num_betas],v_template_diff),axis=2)
-            num_betas=num_betas+1
-        else:
-            if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM):
-                print(f'WARNING: You are using a {self.name()} model, with only'
-                ' 10 shape coefficients.')
-                num_betas = min(num_betas, 10)  
-            else:
-                num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
+            v_template_diff = np.expand_dims(v_template_smil - data_struct.v_template, axis=2)
+            shapedirs = np.concatenate((shapedirs[:, :, :num_betas], v_template_diff), axis=2)
+            num_betas = num_betas + 1
 
         self._num_betas = num_betas
         shapedirs = shapedirs[:, :, :num_betas]
