@@ -506,7 +506,7 @@ class SMPLH(SMPL):
 
     def __init__(
         self, model_path,
-        kid_template_path,
+        kid_template_path = '',
         data_struct: Optional[Struct] = None,
         create_left_hand_pose: bool = True,
         left_hand_pose: Optional[Tensor] = None,
