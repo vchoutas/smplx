@@ -24,7 +24,6 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from loguru import logger
 
 from .lbs import (
     lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords, blend_shapes)
@@ -1224,7 +1223,7 @@ class SMPLX(SMPLH):
         # Concatenate the shape and expression coefficients
         scale = int(batch_size / betas.shape[0])
         if scale > 1:
-           betas = betas.expand(scale, -1)
+            betas = betas.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
