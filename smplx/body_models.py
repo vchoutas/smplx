@@ -49,6 +49,7 @@ class SMPL(nn.Module):
 
     def __init__(
         self, model_path: str,
+	kid_template_path: str = '',
         data_struct: Optional[Struct] = None,
         create_betas: bool = True,
         betas: Optional[Tensor] = None,
@@ -63,6 +64,7 @@ class SMPL(nn.Module):
         batch_size: int = 1,
         joint_mapper=None,
         gender: str = 'neutral',
+        age: str = 'adult',
         vertex_ids: Dict[str, int] = None,
         v_template: Optional[Union[Tensor, Array]] = None,
         **kwargs
@@ -121,6 +123,7 @@ class SMPL(nn.Module):
         '''
 
         self.gender = gender
+        self.age = age
 
         if data_struct is None:
             if osp.isdir(model_path):
@@ -144,6 +147,13 @@ class SMPL(nn.Module):
             num_betas = min(num_betas, 10)
         else:
             num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
+
+        if self.age=='kid':
+            v_template_smil = np.load(kid_template_path)
+            v_template_smil -= np.mean(v_template_smil, axis=0)
+            v_template_diff = np.expand_dims(v_template_smil - data_struct.v_template, axis=2)
+            shapedirs = np.concatenate((shapedirs[:, :, :num_betas], v_template_diff), axis=2)
+            num_betas = num_betas + 1
 
         self._num_betas = num_betas
         shapedirs = shapedirs[:, :, :num_betas]
@@ -496,6 +506,7 @@ class SMPLH(SMPL):
 
     def __init__(
         self, model_path,
+        kid_template_path: str = '',
         data_struct: Optional[Struct] = None,
         create_left_hand_pose: bool = True,
         left_hand_pose: Optional[Tensor] = None,
@@ -506,6 +517,7 @@ class SMPLH(SMPL):
         flat_hand_mean: bool = False,
         batch_size: int = 1,
         gender: str = 'neutral',
+        age: str = 'adult',
         dtype=torch.float32,
         vertex_ids=None,
         use_compressed: bool = True,
@@ -578,8 +590,9 @@ class SMPLH(SMPL):
 
         super(SMPLH, self).__init__(
             model_path=model_path,
+            kid_template_path=kid_template_path,
             data_struct=data_struct,
-            batch_size=batch_size, vertex_ids=vertex_ids, gender=gender,
+            batch_size=batch_size, vertex_ids=vertex_ids, gender=gender, age=age,
             use_compressed=use_compressed, dtype=dtype, ext=ext, **kwargs)
 
         self.use_pca = use_pca
@@ -886,6 +899,7 @@ class SMPLX(SMPLH):
 
     def __init__(
         self, model_path: str,
+	kid_template_path: str = '',
         num_expression_coeffs: int = 10,
         create_expression: bool = True,
         expression: Optional[Tensor] = None,
@@ -898,6 +912,7 @@ class SMPLX(SMPLH):
         use_face_contour: bool = False,
         batch_size: int = 1,
         gender: str = 'neutral',
+        age: str = 'adult',
         dtype=torch.float32,
         ext: str = 'npz',
         **kwargs
@@ -967,11 +982,12 @@ class SMPLX(SMPLH):
 
         super(SMPLX, self).__init__(
             model_path=model_path,
+            kid_template_path=kid_template_path,
             data_struct=data_struct,
             dtype=dtype,
             batch_size=batch_size,
             vertex_ids=VERTEX_IDS['smplx'],
-            gender=gender, ext=ext,
+            gender=gender, age=age, ext=ext,
             **kwargs)
 
         lmk_faces_idx = data_struct.lmk_faces_idx
