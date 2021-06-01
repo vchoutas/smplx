@@ -40,6 +40,11 @@ from .utils import (
 from .vertex_joint_selector import VertexJointSelector
 
 
+from collections import namedtuple
+
+SMPLXOutputTuple = namedtuple('TensorOutput',
+                              ['vertices', 'joints', 'betas', 'expression', 'global_orient', 'body_pose', 'left_hand_pose',
+                               'right_hand_pose', 'jaw_pose', 'transl', 'full_pose'])
 class SMPL(nn.Module):
 
     NUM_JOINTS = 23
@@ -1472,7 +1477,7 @@ class SMPLXLayer(SMPLX):
             joints += transl.unsqueeze(dim=1)
             vertices += transl.unsqueeze(dim=1)
 
-        output = SMPLXOutput(vertices=vertices if return_verts else None,
+        output = SMPLXOutputTuple(vertices=vertices if return_verts else Tensor(0),
                              joints=joints,
                              betas=betas,
                              expression=expression,
@@ -1482,7 +1487,10 @@ class SMPLXLayer(SMPLX):
                              right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
                              transl=transl,
-                             full_pose=full_pose if return_full_pose else None)
+                             full_pose=full_pose if return_full_pose else Tensor(0))
+        #Chnage the output to SMPLXOutputTuple To make it work with torch.jit.trace,
+        #otherwise the trace creation is failed with error:
+        # Only tensors and (possibly nested) tuples of tensors, lists, or dictsare supported as inputs or outputs of traced functions, but instead got value of type SMPLXOutput.
         return output
 
 

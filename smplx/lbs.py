@@ -136,8 +136,12 @@ def vertices2landmarks(
     batch_size, num_verts = vertices.shape[:2]
     device = vertices.device
 
-    lmk_faces = torch.index_select(faces, 0, lmk_faces_idx.view(-1)).view(
+    lmk_faces = torch.index_select(faces, 0, lmk_faces_idx.view(-1).to(torch.long)).view(
         batch_size, -1, 3)
+                        #The '.to(torch.long)'.
+                        # added to make the trace work in c++,
+                        # otherwise you get a runtime error in c++:
+                        # 'index_select(): Expected dtype int32 or int64 for index'
 
     lmk_faces += torch.arange(
         batch_size, dtype=torch.long, device=device).view(-1, 1, 1) * num_verts
