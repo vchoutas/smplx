@@ -160,6 +160,7 @@ def lbs(
     transl: Optional[Tensor] = None,
     parallel_exec: List[List[int]] = None,
     task_group_parents: List[List[int]] = None,
+    return_verts: bool = True,
 ) -> LBSOutput:
     ''' Performs Linear Blend Skinning with the given shape and pose parameters
 
@@ -255,9 +256,9 @@ def lbs(
         verts += transl.unsqueeze(dim=1)
 
     return LBSOutput(
-        vertices=verts,
-        joints_transforms=abs_transforms,
-        v_shaped=v_shaped
+        _vertices=verts,
+        _joints_transforms=abs_transforms,
+        _v_shaped=v_shaped
     )
 
 
