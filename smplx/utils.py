@@ -27,25 +27,24 @@ Array = NewType('Array', np.ndarray)
 
 @dataclass
 class LBSOutput:
-
-    def __init__(
-        self,
-        # joints: Optional[Tensor] = None,
-        vertices: Optional[Tensor] = None,
-        joints_transforms: Optional[Tensor] = None,
-    ) -> None:
-        pass
-        self._joints = joints_transforms[..., :3, 3]
-        self._vertices = vertices
-        self._joints_transforms = joints_transforms
+    vertices: Optional[Tensor] = None
+    joints_transforms: Optional[Tensor] = None
+    v_shaped: Optional[Tensor] = None
 
     @property
     def joints(self):
-        return self._joints
+        if self._joints_transforms is None:
+            return None
+        else:
+            return self._joints_transforms[..., :3, 3]
 
     @property
     def vertices(self):
         return self._vertices
+
+    @property
+    def v_shaped(self):
+        return self._v_shaped
 
     @property
     def joints_transforms(self):
