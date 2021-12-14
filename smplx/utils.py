@@ -27,9 +27,9 @@ Array = NewType('Array', np.ndarray)
 
 @dataclass
 class LBSOutput:
-    vertices: Optional[Tensor] = None
-    joints_transforms: Optional[Tensor] = None
-    v_shaped: Optional[Tensor] = None
+    _vertices: Optional[Tensor] = None
+    _joints_transforms: Optional[Tensor] = None
+    _v_shaped: Optional[Tensor] = None
 
     @property
     def joints(self):
