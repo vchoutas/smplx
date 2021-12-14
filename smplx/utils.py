@@ -14,8 +14,10 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-from typing import NewType, Union, Optional
+from typing import NewType, Union, Optional, List, Tuple
 from dataclasses import dataclass, asdict, fields
+
+from functools import reduce
 import numpy as np
 import torch
 
@@ -24,9 +26,37 @@ Array = NewType('Array', np.ndarray)
 
 
 @dataclass
+class LBSOutput:
+
+    def __init__(
+        self,
+        # joints: Optional[Tensor] = None,
+        vertices: Optional[Tensor] = None,
+        joints_transforms: Optional[Tensor] = None,
+    ) -> None:
+        pass
+        self._joints = joints_transforms[..., :3, 3]
+        self._vertices = vertices
+        self._joints_transforms = joints_transforms
+
+    @property
+    def joints(self):
+        return self._joints
+
+    @property
+    def vertices(self):
+        return self._vertices
+
+    @property
+    def joints_transforms(self):
+        return self._joints_transforms
+
+
+@dataclass
 class ModelOutput:
     vertices: Optional[Tensor] = None
     joints: Optional[Tensor] = None
+    joints_transforms: Optional[Tensor] = None
     full_pose: Optional[Tensor] = None
     global_orient: Optional[Tensor] = None
     transl: Optional[Tensor] = None
@@ -94,6 +124,48 @@ def find_joint_kin_chain(joint_id, kinematic_tree):
         kin_chain.append(curr_idx)
         curr_idx = kinematic_tree[curr_idx]
     return kin_chain
+
+
+def toposort2(data):
+    for k, v in data.items():
+        v.discard(k)  # Ignore self dependencies
+    extra_items_in_deps = reduce(set.union, data.values()) - set(data.keys())
+    data.update({item: set() for item in extra_items_in_deps})
+    while True:
+        ordered = set(item for item, dep in data.items() if not dep)
+        if not ordered:
+            break
+        # yield ' '.join(sorted(ordered))
+        yield sorted(ordered)
+        data = {item: (dep - ordered) for item, dep in data.items()
+                if item not in ordered}
+    assert not data, "A cyclic dependency exists amongst %r" % data
+
+
+def parents_to_top_sort(
+    joint_parents
+) -> Tuple[List[List[int]], List[List[int]]]:
+    if torch.is_tensor(joint_parents):
+        joint_parents = joint_parents.detach().cpu().numpy()
+
+    child_to_parent = {}
+
+    for ii, parent in enumerate(joint_parents):
+        if ii < 1:
+            continue
+        child_to_parent[ii] = set([parent.item()])
+
+    parallel_exec = list(toposort2(child_to_parent))
+    parallel_exec.pop(0)
+
+    task_group_parents = []
+    for task_group in parallel_exec:
+        parent_indices = []
+        for node in task_group:
+            parent_indices.append(joint_parents[node])
+        task_group_parents.append(parent_indices)
+
+    return parallel_exec, task_group_parents
 
 
 def to_tensor(
