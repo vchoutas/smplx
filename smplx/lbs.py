@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 import numpy as np
 
 import torch
 import torch.nn.functional as F
 
-from .utils import rot_mat_to_euler, Tensor
+from .utils import rot_mat_to_euler, Tensor, LBSOutput
 
 
 def find_dynamic_lmk_idx_and_bcoords(
@@ -94,13 +94,11 @@ def find_dynamic_lmk_idx_and_bcoords(
     neg_mask = y_rot_angle.lt(0).to(dtype=torch.long)
     mask = y_rot_angle.lt(-39).to(dtype=torch.long)
     neg_vals = mask * 78 + (1 - mask) * (39 - y_rot_angle)
-    y_rot_angle = (neg_mask * neg_vals +
-                   (1 - neg_mask) * y_rot_angle)
+    y_rot_angle = (neg_mask * neg_vals + (1 - neg_mask) * y_rot_angle)
 
-    dyn_lmk_faces_idx = torch.index_select(dynamic_lmk_faces_idx,
-                                           0, y_rot_angle)
-    dyn_lmk_b_coords = torch.index_select(dynamic_lmk_b_coords,
-                                          0, y_rot_angle)
+    dyn_lmk_faces_idx = torch.index_select(
+        dynamic_lmk_faces_idx, 0, y_rot_angle)
+    dyn_lmk_b_coords = torch.index_select(dynamic_lmk_b_coords, 0, y_rot_angle)
 
     return dyn_lmk_faces_idx, dyn_lmk_b_coords
 
@@ -159,7 +157,10 @@ def lbs(
     parents: Tensor,
     lbs_weights: Tensor,
     pose2rot: bool = True,
-) -> Tuple[Tensor, Tensor]:
+    transl: Optional[Tensor] = None,
+    parallel_exec: List[List[int]] = None,
+    task_group_parents: List[List[int]] = None,
+) -> LBSOutput:
     ''' Performs Linear Blend Skinning with the given shape and pose parameters
 
         Parameters
@@ -187,15 +188,15 @@ def lbs(
             matrices. The default value is True. If False, then the pose tensor
             should already contain rotation matrices and have a size of
             Bx(J + 1)x9
-        dtype: torch.dtype, optional
-
+        transl: torch.Tensor, optional
+            A tensor that contains the root translation of the body. If
+            provided, it will be used to move the model joints and vertices
+            to the desired location.
         Returns
         -------
-        verts: torch.tensor BxVx3
-            The vertices of the mesh after applying the shape and pose
-            displacements.
-        joints: torch.tensor BxJx3
-            The joints of the model
+            lbs_output: LBSOutput
+            A dataclass that contains the vertices and joint transformations
+            computed using linear blend skinning
     '''
 
     batch_size = max(betas.shape[0], pose.shape[0])
@@ -228,15 +229,18 @@ def lbs(
 
     v_posed = pose_offsets + v_shaped
     # 4. Get the global joint location
-    J_transformed, A = batch_rigid_transform(rot_mats, J, parents, dtype=dtype)
+    J_transformed, rel_transforms, abs_transforms = batch_rigid_transform(
+        rot_mats, J, parents, parallel_exec=parallel_exec,
+        task_group_parents=task_group_parents,
+    )
 
     # 5. Do skinning:
     # W is N x V x (J + 1)
     W = lbs_weights.unsqueeze(dim=0).expand([batch_size, -1, -1])
     # (N x V x (J + 1)) x (N x (J + 1) x 16)
     num_joints = J_regressor.shape[0]
-    T = torch.matmul(W, A.view(batch_size, num_joints, 16)) \
-        .view(batch_size, -1, 4, 4)
+    T = torch.matmul(W, rel_transforms.view(batch_size, num_joints, 16)).view(
+        batch_size, -1, 4, 4)
 
     homogen_coord = torch.ones([batch_size, v_posed.shape[1], 1],
                                dtype=dtype, device=device)
@@ -245,7 +249,16 @@ def lbs(
 
     verts = v_homo[:, :, :3, 0]
 
-    return verts, J_transformed
+    if transl is not None:
+        # Update the translation for the
+        abs_transforms[..., :3, 3] += transl.unsqueeze(dim=1)
+        verts += transl.unsqueeze(dim=1)
+
+    return LBSOutput(
+        vertices=verts,
+        joints_transforms=abs_transforms,
+        v_shaped=v_shaped
+    )
 
 
 def vertices2joints(J_regressor: Tensor, vertices: Tensor) -> Tensor:
@@ -310,7 +323,7 @@ def batch_rodrigues(
     batch_size = rot_vecs.shape[0]
     device, dtype = rot_vecs.device, rot_vecs.dtype
 
-    angle = torch.norm(rot_vecs + 1e-8, dim=1, keepdim=True)
+    angle = torch.norm(rot_vecs + epsilon, dim=1, keepdim=True)
     rot_dir = rot_vecs / angle
 
     cos = torch.unsqueeze(torch.cos(angle), dim=1)
@@ -346,8 +359,9 @@ def batch_rigid_transform(
     rot_mats: Tensor,
     joints: Tensor,
     parents: Tensor,
-    dtype=torch.float32
-) -> Tensor:
+    parallel_exec: List[List[int]] = None,
+    task_group_parents: List[List[int]] = None,
+) -> Tuple[Tensor, Tensor, Tensor]:
     """
     Applies a batch of rigid transformations to the joints
 
@@ -359,9 +373,11 @@ def batch_rigid_transform(
         Locations of joints
     parents : torch.tensor BxN
         The kinematic tree of each object
-    dtype : torch.dtype, optional:
-        The data type of the created tensors, the default is torch.float32
-
+    parallel_exec: List[List[int]], optional
+        Contains groups of joints whose rigid transformation can be computed in
+        parallel.
+    task_group_parents: List[List[int]], optional
+        Contains the indices of the parent joints of each joint in each group.
     Returns
     -------
     posed_joints : torch.tensor BxNx3
@@ -369,26 +385,55 @@ def batch_rigid_transform(
     rel_transforms : torch.tensor BxNx4x4
         The relative (with respect to the root joint) rigid transformations
         for all the joints
+    abs_transforms : torch.tensor BxNx4x4
+        The rigid transformations for all the joints in world coordinates
     """
 
+    # Get the device and data type from the joints tensor.
+    device, dtype = joints.device, joints.dtype
+    batch_size, num_joints = joints.shape[:2]
+
+    # Add a dummy dimension to the joint tensor
     joints = torch.unsqueeze(joints, dim=-1)
 
+    # Compute the parent relative coordinates of the joints.
     rel_joints = joints.clone()
     rel_joints[:, 1:] -= joints[:, parents[1:]]
 
+    # Compute the transformation matrix of each joint. Note that we have not
+    # traversed the kinematic tree, so these matrices are relative to the
+    # parent.
     transforms_mat = transform_mat(
         rot_mats.reshape(-1, 3, 3),
         rel_joints.reshape(-1, 3, 1)).reshape(-1, joints.shape[1], 4, 4)
 
-    transform_chain = [transforms_mat[:, 0]]
-    for i in range(1, parents.shape[0]):
-        # Subtract the joint location at the rest pose
-        # No need for rotation, since it's identity when at rest
-        curr_res = torch.matmul(transform_chain[parents[i]],
-                                transforms_mat[:, i])
-        transform_chain.append(curr_res)
+    if parallel_exec is not None and task_group_parents is not None:
+        # Create the final transformation array
+        transforms = torch.eye(4, dtype=dtype, device=device).reshape(
+            1, 1, 4, 4).repeat(batch_size, num_joints, 1, 1)
+        # Assign the root transformation
+        transforms[:, 0] = transforms_mat[:, 0]
+        num_groups = len(parallel_exec)
+        # Iterate through the parallel groups
+        # The idea here is that there joints in the kinematic tree that do not
+        # depend upon each other. We can thus compute their transformation in
+        # parallel.
+        for ii in range(num_groups):
+            # For the current group compute the transformations
+            transforms[:, parallel_exec[ii]] = torch.matmul(
+                transforms[:, task_group_parents[ii]],
+                transforms_mat[:, parallel_exec[ii]])
+    else:
+        transform_chain = [transforms_mat[:, 0]]
+        # Traverse the kinematic tree sequentially
+        for i in range(1, parents.shape[0]):
+            # Compute the absolute transformation for the current joint
+            curr_res = torch.matmul(
+                transform_chain[parents[i]], transforms_mat[:, i])
+            transform_chain.append(curr_res)
 
-    transforms = torch.stack(transform_chain, dim=1)
+        # Collect all transformations into a single tensor.
+        transforms = torch.stack(transform_chain, dim=1)
 
     # The last column of the transformations contains the posed joints
     posed_joints = transforms[:, :, :3, 3]
@@ -398,4 +443,4 @@ def batch_rigid_transform(
     rel_transforms = transforms - F.pad(
         torch.matmul(transforms, joints_homogen), [3, 0, 0, 0, 0, 0, 0, 0])
 
-    return posed_joints, rel_transforms
+    return posed_joints, rel_transforms, transforms
