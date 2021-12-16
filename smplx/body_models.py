@@ -14,7 +14,7 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, List, Tuple
 import os
 import os.path as osp
 
@@ -25,8 +25,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+
+from loguru import logger
+
 from .lbs import (
-    lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords, blend_shapes)
+    lbs, find_dynamic_lmk_idx_and_bcoords, blend_shapes,
+    batch_rodrigues, build_landmark_object
+)
 
 from .vertex_ids import vertex_ids as VERTEX_IDS
 from .utils import (
@@ -36,8 +41,67 @@ from .utils import (
     SMPLXOutput,
     MANOOutput,
     FLAMEOutput,
-    find_joint_kin_chain)
+    find_joint_kin_chain,
+    parents_to_top_sort,
+    LBSOutput,
+    batch_size_from_tensor_list,
+    identity_rot_mats,
+)
+from .joint_names import JOINT_NAMES_DICT
 from .vertex_joint_selector import VertexJointSelector
+
+
+def decode_pose_pca(
+    coefficients: Tensor, components: Tensor
+) -> Tensor:
+    ''' Decodes PCA pose coefficients to axis-angle
+    '''
+
+    return torch.einsum('bi,ij->bj', [coefficients, components])
+
+
+def smpl_functional(
+    v_template: Tensor,
+    shapedirs: Tensor,
+    posedirs: Tensor,
+    J_regressor: Tensor,
+    parents: Tensor,
+    lbs_weights: Tensor,
+    full_pose: Tensor,
+    blendshapes: Optional[Tensor] = None,
+    transl: Optional[Tensor] = None,
+    num_blendshapes: int = 10,
+    parallel_exec: List[List[int]] = None,
+    task_group_parents: List[List[int]] = None,
+    return_verts: bool = True,
+) -> LBSOutput:
+
+    model_vars = [blendshapes, full_pose, transl]
+    batch_size = batch_size_from_tensor_list(model_vars)
+
+    dtype, device = shapedirs.dtype, shapedirs.device
+    targs = {'dtype': dtype, 'device': device}
+
+    if full_pose is None:
+        num_body_joints = len(J_regressor)
+        full_pose = torch.eye(3, **targs).view(1, 1, 3, 3).expand(
+            batch_size, num_body_joints, -1, -1).contiguous()
+    if blendshapes is None:
+        blendshapes = torch.zeros([batch_size, num_blendshapes], **targs)
+    if transl is None:
+        transl = torch.zeros([batch_size, 3], **targs)
+
+    lbs_output = lbs(blendshapes, full_pose, v_template,
+                     shapedirs, posedirs,
+                     J_regressor, parents,
+                     lbs_weights,
+                     transl=transl,
+                     parallel_exec=parallel_exec,
+                     task_group_parents=task_group_parents,
+                     return_verts=return_verts,
+                     pose2rot=False)
+
+    return lbs_output
 
 
 class SMPL(nn.Module):
@@ -46,9 +110,12 @@ class SMPL(nn.Module):
     NUM_BODY_JOINTS = 23
     SHAPE_SPACE_DIM = 300
 
+    NAME = 'SMPL'
+
     def __init__(
-        self, model_path: str,
-	kid_template_path: str = '',
+        self,
+        model_path: str,
+        kid_template_path: str = '',
         data_struct: Optional[Struct] = None,
         create_betas: bool = True,
         betas: Optional[Tensor] = None,
@@ -66,6 +133,7 @@ class SMPL(nn.Module):
         age: str = 'adult',
         vertex_ids: Dict[str, int] = None,
         v_template: Optional[Union[Tensor, Array]] = None,
+        optim_transform: bool = False,
         **kwargs
     ) -> None:
         ''' SMPL model constructor
@@ -139,27 +207,29 @@ class SMPL(nn.Module):
 
         super(SMPL, self).__init__()
         self.batch_size = batch_size
+
         shapedirs = data_struct.shapedirs
         if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM):
-            print(f'WARNING: You are using a {self.name()} model, with only'
+            print(f'WARNING: You are using a model, with only'
                   ' 10 shape coefficients.')
             num_betas = min(num_betas, 10)
         else:
             num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
 
-        if self.age=='kid':
+        if self.age == 'kid':
             v_template_smil = np.load(kid_template_path)
             v_template_smil -= np.mean(v_template_smil, axis=0)
-            v_template_diff = np.expand_dims(v_template_smil - data_struct.v_template, axis=2)
-            shapedirs = np.concatenate((shapedirs[:, :, :num_betas], v_template_diff), axis=2)
+            v_template_diff = np.expand_dims(
+                v_template_smil - data_struct.v_template, axis=2)
+            shapedirs = np.concatenate(
+                (shapedirs[:, :, :num_betas], v_template_diff), axis=2)
             num_betas = num_betas + 1
 
         self._num_betas = num_betas
         shapedirs = shapedirs[:, :, :num_betas]
         # The shape components
         self.register_buffer(
-            'shapedirs',
-            to_tensor(to_np(shapedirs), dtype=dtype))
+            'shapedirs', to_tensor(to_np(shapedirs), dtype=dtype))
 
         if vertex_ids is None:
             # SMPL and SMPL-H share the same topology, so any extra joints can
@@ -173,10 +243,9 @@ class SMPL(nn.Module):
         self.vertex_joint_selector = VertexJointSelector(
             vertex_ids=vertex_ids, **kwargs)
 
-        self.faces = data_struct.f
-        self.register_buffer('faces_tensor',
-                             to_tensor(to_np(self.faces, dtype=np.int64),
-                                       dtype=torch.long))
+        self.faces = to_np(data_struct.f, dtype=np.int64)
+        faces_tensor = to_tensor(self.faces, dtype=torch.long)
+        self.register_buffer('faces_tensor', faces_tensor)
 
         if create_betas:
             if betas is None:
@@ -246,7 +315,7 @@ class SMPL(nn.Module):
 
         # Pose blend shape basis: 6890 x 3 x 207, reshaped to 6890*3 x 207
         num_pose_basis = data_struct.posedirs.shape[-1]
-        # 207 x 20670
+        # 9*J x 20670
         posedirs = np.reshape(data_struct.posedirs, [-1, num_pose_basis]).T
         self.register_buffer('posedirs',
                              to_tensor(to_np(posedirs), dtype=dtype))
@@ -255,6 +324,13 @@ class SMPL(nn.Module):
         parents = to_tensor(to_np(data_struct.kintree_table[0])).long()
         parents[0] = -1
         self.register_buffer('parents', parents)
+
+        parallel_exec, task_group_parents = None, None
+        if optim_transform:
+            parallel_exec, task_group_parents = parents_to_top_sort(parents)
+
+        self.parallel_exec = parallel_exec
+        self.task_group_parents = task_group_parents
 
         lbs_weights = to_tensor(to_np(data_struct.weights), dtype=dtype)
         self.register_buffer('lbs_weights', lbs_weights)
@@ -267,11 +343,31 @@ class SMPL(nn.Module):
     def num_expression_coeffs(self):
         return 0
 
+    @property
+    def num_verts(self):
+        return len(self.v_template)
+
+    @property
+    def num_joints(self):
+        num_joints = self.num_skeleton_joints
+        if hasattr(self, 'vertex_joint_selector'):
+            num_joints += self.vertex_joint_selector.num_joints
+        return num_joints
+
+    @property
+    def joint_names(self) -> List[str]:
+        return JOINT_NAMES_DICT[self.name]
+
+    @property
+    def num_skeleton_joints(self) -> int:
+        return len(self.J_regressor)
+
     def create_mean_pose(self, data_struct) -> Tensor:
         pass
 
+    @property
     def name(self) -> str:
-        return 'SMPL'
+        return self.NAME
 
     @torch.no_grad()
     def reset_params(self, **params_dict) -> None:
@@ -281,19 +377,44 @@ class SMPL(nn.Module):
             else:
                 param.fill_(0)
 
-    def get_num_verts(self) -> int:
-        return self.v_template.shape[0]
-
-    def get_num_faces(self) -> int:
+    @property
+    def num_faces(self) -> int:
         return self.faces.shape[0]
 
     def extra_repr(self) -> str:
         msg = [
             f'Gender: {self.gender.upper()}',
-            f'Number of joints: {self.J_regressor.shape[0]}',
+            f'Number of joints: {self.num_joints}',
             f'Betas: {self.num_betas}',
         ]
         return '\n'.join(msg)
+
+    def remap_joints(
+        self,
+        joints: Optional[Tensor] = None,
+        joints_transforms: Optional[Tensor] = None,
+    ) -> Tuple[Tensor, Tensor]:
+        ''' Map the joints to a different joint set using the JointMapper object
+
+            Parameters
+            ----------
+            joints: Optional[Tensor] = None
+                The array of model joints
+            joints_transforms: Optional[Tensor] = None,
+                An array that contains the rigid transformations of each joint
+                in world coordinates.
+        '''
+        # If there is no joint mapper object, then do nothing
+        if self.joint_mapper is None:
+            return joints, joints_transforms
+
+        if joints is not None:
+            joints = self.joint_mapper(joints)
+
+        if joints_transforms is not None:
+            joints_transforms = self.joint_mapper(joints_transforms)
+
+        return joints, joints_transforms
 
     def forward_shape(
         self,
@@ -310,7 +431,6 @@ class SMPL(nn.Module):
         global_orient: Optional[Tensor] = None,
         transl: Optional[Tensor] = None,
         return_verts=True,
-        return_full_pose: bool = False,
         pose2rot: bool = True,
         **kwargs
     ) -> SMPLOutput:
@@ -327,7 +447,7 @@ class SMPL(nn.Module):
                 instead. For example, it can used if shape parameters
                 `betas` are predicted from some external model.
                 (default=None)
-            body_pose: torch.tensor, optional, shape Bx(J*3)
+            body_pose: torch.tensor, optional, shape Bx(N_b*3)
                 If given, ignore the member variable `body_pose` and use it
                 instead. For example, it can used if someone predicts the
                 pose of the body joints are predicted from some external model.
@@ -340,8 +460,6 @@ class SMPL(nn.Module):
                 (default=None)
             return_verts: bool, optional
                 Return the vertices. (default=True)
-            return_full_pose: bool, optional
-                Returns the full axis-angle pose vector (default=False)
 
             Returns
             -------
@@ -353,41 +471,46 @@ class SMPL(nn.Module):
         body_pose = body_pose if body_pose is not None else self.body_pose
         betas = betas if betas is not None else self.betas
 
-        apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None and hasattr(self, 'transl'):
             transl = self.transl
 
         full_pose = torch.cat([global_orient, body_pose], dim=1)
+        if pose2rot:
+            full_pose_rot_mat = batch_rodrigues(full_pose.reshape(-1, 3)).reshape(
+                -1, self.num_skeleton_joints, 3, 3)
+        else:
+            full_pose_rot_mat = full_pose
 
-        batch_size = max(betas.shape[0], global_orient.shape[0],
-                         body_pose.shape[0])
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.shapedirs, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose_rot_mat,
+            blendshapes=betas, transl=transl,
+            num_blendshapes=self.num_betas,
+            return_verts=return_verts,
+        )
 
-        if betas.shape[0] != batch_size:
-            num_repeats = int(batch_size / betas.shape[0])
-            betas = betas.expand(num_repeats, -1)
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
 
-        vertices, joints = lbs(betas, full_pose, self.v_template,
-                               self.shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
-        joints = self.vertex_joint_selector(vertices, joints)
-        # Map the joints to the current dataset
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints)
-
-        if apply_trans:
-            joints += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
-
-        output = SMPLOutput(vertices=vertices if return_verts else None,
-                            global_orient=global_orient,
-                            body_pose=body_pose,
-                            joints=joints,
-                            betas=betas,
-                            full_pose=full_pose if return_full_pose else None)
-
-        return output
+        return SMPLOutput(
+            vertices=lbs_output.vertices,
+            joints=joints,
+            joints_transforms=joints_transforms,
+            rel_joints_transforms=lbs_output.rel_joints_transforms,
+            v_shaped=lbs_output.v_shaped,
+            v_rest_pose=lbs_output.v_rest_pose,
+            full_pose=full_pose,
+            global_orient=global_orient,
+            body_pose=body_pose,
+            betas=betas,
+            transl=transl,
+        )
 
 
 class SMPLLayer(SMPL):
@@ -413,8 +536,8 @@ class SMPLLayer(SMPL):
         global_orient: Optional[Tensor] = None,
         transl: Optional[Tensor] = None,
         return_verts=True,
-        return_full_pose: bool = False,
         pose2rot: bool = True,
+        v_template: Optional[Tensor] = None,
         **kwargs
     ) -> SMPLOutput:
         ''' Forward pass for the SMPL model
@@ -447,53 +570,63 @@ class SMPLLayer(SMPL):
             Returns
             -------
         '''
+
         model_vars = [betas, global_orient, body_pose, transl]
-        batch_size = 1
-        for var in model_vars:
-            if var is None:
-                continue
-            batch_size = max(batch_size, len(var))
+        batch_size = batch_size_from_tensor_list(model_vars)
         device, dtype = self.shapedirs.device, self.shapedirs.dtype
+        targs = {'dtype': dtype, 'device': device}
+
         if global_orient is None:
-            global_orient = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(batch_size, -1, -1, -1).contiguous()
+            global_orient = identity_rot_mats(
+                batch_size=batch_size, num_matrices=1, **targs)
         if body_pose is None:
-            body_pose = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(
-                    batch_size, self.NUM_BODY_JOINTS, -1, -1).contiguous()
-        if betas is None:
-            betas = torch.zeros([batch_size, self.num_betas],
-                                dtype=dtype, device=device)
-        if transl is None:
-            transl = torch.zeros([batch_size, 3], dtype=dtype, device=device)
+            body_pose = identity_rot_mats(
+                batch_size=batch_size, num_matrices=self.NUM_BODY_JOINTS,
+                **targs)
+
         full_pose = torch.cat(
             [global_orient.reshape(-1, 1, 3, 3),
-             body_pose.reshape(-1, self.NUM_BODY_JOINTS, 3, 3)],
-            dim=1)
+             body_pose.reshape(-1, self.NUM_BODY_JOINTS, 3, 3)], dim=1)
+        assert full_pose.shape[1] == self.num_skeleton_joints, (
+            f'Full pose must contain {self.num_skeleton_joints}, got'
+            f' {full_pose.shape[1]}.'
+        )
 
-        vertices, joints = lbs(betas, full_pose, self.v_template,
-                               self.shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights,
-                               pose2rot=False)
+        # Check if a custom vertex template was passed to the model
+        if v_template is None:
+            v_template = self.v_template
 
-        joints = self.vertex_joint_selector(vertices, joints)
-        # Map the joints to the current dataset
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.shapedirs, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose,
+            blendshapes=betas,
+            transl=transl,
+            num_blendshapes=self.num_betas,
+            return_verts=return_verts,
+        )
 
-        if transl is not None:
-            joints += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
 
-        output = SMPLOutput(vertices=vertices if return_verts else None,
-                            global_orient=global_orient,
-                            body_pose=body_pose,
-                            joints=joints,
-                            betas=betas,
-                            full_pose=full_pose if return_full_pose else None)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
-        return output
+        return SMPLOutput(
+            vertices=lbs_output.vertices,
+            joints=joints,
+            joints_transforms=joints_transforms,
+            rel_joints_transforms=lbs_output.rel_joints_transforms,
+            v_shaped=lbs_output.v_shaped,
+            v_rest_pose=lbs_output.v_rest_pose,
+            full_pose=full_pose,
+            global_orient=global_orient,
+            body_pose=body_pose,
+            betas=betas,
+            transl=transl,
+        )
 
 
 class SMPLH(SMPL):
@@ -503,8 +636,11 @@ class SMPLH(SMPL):
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = NUM_BODY_JOINTS + 2 * NUM_HAND_JOINTS
 
+    NAME: str = 'SMPL+H'
+
     def __init__(
-        self, model_path,
+        self,
+        model_path,
         kid_template_path: str = '',
         data_struct: Optional[Struct] = None,
         create_left_hand_pose: bool = True,
@@ -671,9 +807,6 @@ class SMPLH(SMPL):
                                self.right_hand_mean], dim=0)
         return pose_mean
 
-    def name(self) -> str:
-        return 'SMPL+H'
-
     def extra_repr(self):
         msg = super(SMPLH, self).extra_repr()
         msg = [msg]
@@ -709,46 +842,54 @@ class SMPLH(SMPL):
         right_hand_pose = (right_hand_pose if right_hand_pose is not None else
                            self.right_hand_pose)
 
-        apply_trans = transl is not None or hasattr(self, 'transl')
-        if transl is None:
-            if hasattr(self, 'transl'):
-                transl = self.transl
+        if transl is None and hasattr(self, 'transl'):
+            transl = self.transl
 
         if self.use_pca:
-            left_hand_pose = torch.einsum(
-                'bi,ij->bj', [left_hand_pose, self.left_hand_components])
-            right_hand_pose = torch.einsum(
-                'bi,ij->bj', [right_hand_pose, self.right_hand_components])
+            left_hand_pose = decode_pose_pca(
+                left_hand_pose, self.left_hand_components)
+            right_hand_pose = decode_pose_pca(
+                right_hand_pose, self.right_hand_components)
 
-        full_pose = torch.cat([global_orient, body_pose,
-                               left_hand_pose,
-                               right_hand_pose], dim=1)
+        full_pose = torch.cat([
+            global_orient, body_pose, left_hand_pose, right_hand_pose], dim=1)
         full_pose += self.pose_mean
 
-        vertices, joints = lbs(betas, full_pose, self.v_template,
-                               self.shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot)
+        full_pose_rot_mat = batch_rodrigues(full_pose.reshape(-1, 3)).reshape(
+            -1, self.num_skeleton_joints, 3, 3)
 
-        # Add any extra joints that might be needed
-        joints = self.vertex_joint_selector(vertices, joints)
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.shapedirs, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose_rot_mat,
+            blendshapes=betas, transl=transl,
+            num_blendshapes=self.num_betas,
+            return_verts=return_verts,
+        )
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
 
-        if apply_trans:
-            joints += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
-        output = SMPLHOutput(vertices=vertices if return_verts else None,
-                             joints=joints,
-                             betas=betas,
-                             global_orient=global_orient,
-                             body_pose=body_pose,
-                             left_hand_pose=left_hand_pose,
-                             right_hand_pose=right_hand_pose,
-                             full_pose=full_pose if return_full_pose else None)
-
-        return output
+        return SMPLHOutput(
+            vertices=lbs_output.vertices,
+            joints=joints,
+            joints_transforms=joints_transforms,
+            rel_joints_transforms=lbs_output.rel_joints_transforms,
+            v_shaped=lbs_output.v_shaped,
+            v_rest_pose=lbs_output.v_rest_pose,
+            betas=betas,
+            global_orient=global_orient,
+            body_pose=body_pose,
+            left_hand_pose=left_hand_pose,
+            right_hand_pose=right_hand_pose,
+            full_pose=full_pose,
+            transl=transl,
+        )
 
 
 class SMPLHLayer(SMPLH):
@@ -778,6 +919,7 @@ class SMPLHLayer(SMPLH):
         transl: Optional[Tensor] = None,
         return_verts: bool = True,
         return_full_pose: bool = False,
+        v_template: Optional[Tensor] = None,
         pose2rot: bool = True,
         **kwargs
     ) -> SMPLHOutput:
@@ -816,35 +958,33 @@ class SMPLHLayer(SMPLH):
                 Return the vertices. (default=True)
             return_full_pose: bool, optional
                 Returns the full axis-angle pose vector (default=False)
-
+            v_template: torch.Tensor, optional, shape BxVx3
+                A custom v template per batch element
             Returns
             -------
+                SMPLHOutput
         '''
         model_vars = [betas, global_orient, body_pose, transl, left_hand_pose,
                       right_hand_pose]
-        batch_size = 1
-        for var in model_vars:
-            if var is None:
-                continue
-            batch_size = max(batch_size, len(var))
+        batch_size = batch_size_from_tensor_list(model_vars)
         device, dtype = self.shapedirs.device, self.shapedirs.dtype
+        targs = {'dtype': dtype, 'device': device}
+
         if global_orient is None:
-            global_orient = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(batch_size, -1, -1, -1).contiguous()
+            global_orient = identity_rot_mats(
+                batch_size=batch_size, num_matrices=1, **targs)
         if body_pose is None:
-            body_pose = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(batch_size, 21, -1, -1).contiguous()
+            body_pose = identity_rot_mats(
+                batch_size=batch_size, num_matrices=self.NUM_BODY_JOINTS,
+                **targs)
         if left_hand_pose is None:
-            left_hand_pose = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(batch_size, 15, -1, -1).contiguous()
+            left_hand_pose = identity_rot_mats(
+                batch_size=batch_size, num_matrices=self.NUM_HAND_JOINTS,
+                **targs)
         if right_hand_pose is None:
-            right_hand_pose = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(batch_size, 15, -1, -1).contiguous()
-        if betas is None:
-            betas = torch.zeros([batch_size, self.num_betas],
-                                dtype=dtype, device=device)
-        if transl is None:
-            transl = torch.zeros([batch_size, 3], dtype=dtype, device=device)
+            right_hand_pose = identity_rot_mats(
+                batch_size=batch_size, num_matrices=self.NUM_HAND_JOINTS,
+                **targs)
 
         # Concatenate all pose vectors
         full_pose = torch.cat(
@@ -853,29 +993,50 @@ class SMPLHLayer(SMPLH):
              left_hand_pose.reshape(-1, self.NUM_HAND_JOINTS, 3, 3),
              right_hand_pose.reshape(-1, self.NUM_HAND_JOINTS, 3, 3)],
             dim=1)
+        assert full_pose.shape[1] == self.num_skeleton_joints, (
+            f'Full pose must contain {self.num_skeleton_joints}, got'
+            f' {full_pose.shape[1]}.'
+        )
+        # Check if a custom vertex template was passed to the model
+        if v_template is None:
+            v_template = self.v_template
 
-        vertices, joints = lbs(betas, full_pose, self.v_template,
-                               self.shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=False)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.shapedirs, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose,
+            blendshapes=betas,
+            transl=transl,
+            num_blendshapes=self.num_betas,
+            return_verts=return_verts,
+        )
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
 
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints)
 
-        if transl is not None:
-            joints += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
-        output = SMPLHOutput(vertices=vertices if return_verts else None,
-                             joints=joints,
-                             betas=betas,
-                             global_orient=global_orient,
-                             body_pose=body_pose,
-                             left_hand_pose=left_hand_pose,
-                             right_hand_pose=right_hand_pose,
-                             full_pose=full_pose if return_full_pose else None)
+        output = SMPLHOutput(
+            vertices=lbs_output.vertices,
+            joints=joints,
+            joints_transforms=joints_transforms,
+            rel_joints_transforms=lbs_output.rel_joints_transforms,
+            v_shaped=lbs_output.v_shaped,
+            v_rest_pose=lbs_output.v_rest_pose,
+            betas=betas,
+            global_orient=global_orient,
+            body_pose=body_pose,
+            left_hand_pose=left_hand_pose,
+            right_hand_pose=right_hand_pose,
+            full_pose=full_pose if return_full_pose else None,
+            transl=transl,
+        )
 
         return output
 
@@ -895,10 +1056,11 @@ class SMPLX(SMPLH):
     NUM_JOINTS = NUM_BODY_JOINTS + 2 * NUM_HAND_JOINTS + NUM_FACE_JOINTS
     EXPRESSION_SPACE_DIM = 100
     NECK_IDX = 12
+    NAME: str = 'SMPL-X'
 
     def __init__(
         self, model_path: str,
-	kid_template_path: str = '',
+        kid_template_path: str = '',
         num_expression_coeffs: int = 10,
         create_expression: bool = True,
         expression: Optional[Tensor] = None,
@@ -914,6 +1076,7 @@ class SMPLX(SMPLH):
         age: str = 'adult',
         dtype=torch.float32,
         ext: str = 'npz',
+        lmk_obj_type: str = 'from_vertices',
         **kwargs
     ) -> None:
         ''' SMPLX model constructor
@@ -989,40 +1152,12 @@ class SMPLX(SMPLH):
             gender=gender, age=age, ext=ext,
             **kwargs)
 
-        lmk_faces_idx = data_struct.lmk_faces_idx
-        self.register_buffer('lmk_faces_idx',
-                             torch.tensor(lmk_faces_idx, dtype=torch.long))
-        lmk_bary_coords = data_struct.lmk_bary_coords
-        self.register_buffer('lmk_bary_coords',
-                             torch.tensor(lmk_bary_coords, dtype=dtype))
-
-        self.use_face_contour = use_face_contour
-        if self.use_face_contour:
-            dynamic_lmk_faces_idx = data_struct.dynamic_lmk_faces_idx
-            dynamic_lmk_faces_idx = torch.tensor(
-                dynamic_lmk_faces_idx,
-                dtype=torch.long)
-            self.register_buffer('dynamic_lmk_faces_idx',
-                                 dynamic_lmk_faces_idx)
-
-            dynamic_lmk_bary_coords = data_struct.dynamic_lmk_bary_coords
-            dynamic_lmk_bary_coords = torch.tensor(
-                dynamic_lmk_bary_coords, dtype=dtype)
-            self.register_buffer('dynamic_lmk_bary_coords',
-                                 dynamic_lmk_bary_coords)
-
-            neck_kin_chain = find_joint_kin_chain(self.NECK_IDX, self.parents)
-            self.register_buffer(
-                'neck_kin_chain',
-                torch.tensor(neck_kin_chain, dtype=torch.long))
-
         if create_jaw_pose:
             if jaw_pose is None:
                 default_jaw_pose = torch.zeros([batch_size, 3], dtype=dtype)
             else:
                 default_jaw_pose = torch.tensor(jaw_pose, dtype=dtype)
-            jaw_pose_param = nn.Parameter(default_jaw_pose,
-                                          requires_grad=True)
+            jaw_pose_param = nn.Parameter(default_jaw_pose, requires_grad=True)
             self.register_parameter('jaw_pose', jaw_pose_param)
 
         if create_leye_pose:
@@ -1030,8 +1165,8 @@ class SMPLX(SMPLH):
                 default_leye_pose = torch.zeros([batch_size, 3], dtype=dtype)
             else:
                 default_leye_pose = torch.tensor(leye_pose, dtype=dtype)
-            leye_pose_param = nn.Parameter(default_leye_pose,
-                                           requires_grad=True)
+            leye_pose_param = nn.Parameter(
+                default_leye_pose, requires_grad=True)
             self.register_parameter('leye_pose', leye_pose_param)
 
         if create_reye_pose:
@@ -1039,8 +1174,8 @@ class SMPLX(SMPLH):
                 default_reye_pose = torch.zeros([batch_size, 3], dtype=dtype)
             else:
                 default_reye_pose = torch.tensor(reye_pose, dtype=dtype)
-            reye_pose_param = nn.Parameter(default_reye_pose,
-                                           requires_grad=True)
+            reye_pose_param = nn.Parameter(
+                default_reye_pose, requires_grad=True)
             self.register_parameter('reye_pose', reye_pose_param)
 
         shapedirs = data_struct.shapedirs
@@ -1048,7 +1183,7 @@ class SMPLX(SMPLH):
             shapedirs = shapedirs[:, :, None]
         if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM +
                 self.EXPRESSION_SPACE_DIM):
-            print(f'WARNING: You are using a {self.name()} model, with only'
+            print(f'WARNING: You are using a model, with only'
                   ' 10 shape and 10 expression coefficients.')
             expr_start_idx = 10
             expr_end_idx = 20
@@ -1075,8 +1210,14 @@ class SMPLX(SMPLH):
                                             requires_grad=True)
             self.register_parameter('expression', expression_param)
 
-    def name(self) -> str:
-        return 'SMPL-X'
+        # Concatenate the expression and shape blendshapes
+        blendshapes = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+        self.register_buffer('blendshapes', blendshapes)
+
+        self.landmark_object = build_landmark_object(
+            data_struct, use_face_contour=use_face_contour,
+            neck_index=self.NECK_IDX, blendshapes=blendshapes, type=lmk_obj_type,
+        )
 
     @property
     def num_expression_coeffs(self):
@@ -1086,18 +1227,16 @@ class SMPLX(SMPLH):
         # Create the array for the mean pose. If flat_hand is false, then use
         # the mean that is given by the data, rather than the flat open hand
         global_orient_mean = torch.zeros([3], dtype=self.dtype)
-        body_pose_mean = torch.zeros([self.NUM_BODY_JOINTS * 3],
-                                     dtype=self.dtype)
+        body_pose_mean = torch.zeros(
+            [self.NUM_BODY_JOINTS * 3], dtype=self.dtype)
         jaw_pose_mean = torch.zeros([3], dtype=self.dtype)
         leye_pose_mean = torch.zeros([3], dtype=self.dtype)
         reye_pose_mean = torch.zeros([3], dtype=self.dtype)
 
-        pose_mean = np.concatenate([global_orient_mean, body_pose_mean,
-                                    jaw_pose_mean,
-                                    leye_pose_mean, reye_pose_mean,
-                                    self.left_hand_mean, self.right_hand_mean],
-                                   axis=0)
-
+        pose_mean = torch.cat([global_orient_mean, body_pose_mean,
+                               jaw_pose_mean, leye_pose_mean, reye_pose_mean,
+                               self.left_hand_mean, self.right_hand_mean],
+                              dim=0)
         return pose_mean
 
     def extra_repr(self):
@@ -1144,7 +1283,7 @@ class SMPLX(SMPLH):
                 If given, ignore the member variable `expression` and use it
                 instead. For example, it can used if expression parameters
                 `expression` are predicted from some external model.
-            body_pose: torch.tensor, optional, shape Bx(J*3)
+            body_pose: torch.tensor, optional, shape Bx(J_b*3)
                 If given, ignore the member variable `body_pose` and use it
                 instead. For example, it can used if someone predicts the
                 pose of the body joints are predicted from some external model.
@@ -1194,85 +1333,66 @@ class SMPLX(SMPLH):
         reye_pose = reye_pose if reye_pose is not None else self.reye_pose
         expression = expression if expression is not None else self.expression
 
-        apply_trans = transl is not None or hasattr(self, 'transl')
-        if transl is None:
-            if hasattr(self, 'transl'):
-                transl = self.transl
+        if transl is None and hasattr(self, 'transl'):
+            transl = self.transl
 
         if self.use_pca:
-            left_hand_pose = torch.einsum(
-                'bi,ij->bj', [left_hand_pose, self.left_hand_components])
-            right_hand_pose = torch.einsum(
-                'bi,ij->bj', [right_hand_pose, self.right_hand_components])
+            left_hand_pose = decode_pose_pca(
+                left_hand_pose, self.left_hand_components)
+            right_hand_pose = decode_pose_pca(
+                right_hand_pose, self.right_hand_components)
 
-        full_pose = torch.cat([global_orient.reshape(-1, 1, 3),
-                               body_pose.reshape(-1, self.NUM_BODY_JOINTS, 3),
-                               jaw_pose.reshape(-1, 1, 3),
-                               leye_pose.reshape(-1, 1, 3),
-                               reye_pose.reshape(-1, 1, 3),
-                               left_hand_pose.reshape(-1, 15, 3),
-                               right_hand_pose.reshape(-1, 15, 3)],
-                              dim=1).reshape(-1, 165)
+        full_pose = torch.cat([
+            global_orient.reshape(-1, 1, 3),
+            body_pose.reshape(-1, self.NUM_BODY_JOINTS, 3),
+            jaw_pose.reshape(-1, 1, 3),
+            leye_pose.reshape(-1, 1, 3),
+            reye_pose.reshape(-1, 1, 3),
+            left_hand_pose.reshape(-1, self.NUM_HAND_JOINTS, 3),
+            right_hand_pose.reshape(-1, self.NUM_HAND_JOINTS, 3)],
+            dim=1).reshape(-1, 165)
 
         # Add the mean pose of the model. Does not affect the body, only the
         # hands when flat_hand_mean == False
         full_pose += self.pose_mean
 
-        batch_size = max(betas.shape[0], global_orient.shape[0],
-                         body_pose.shape[0])
-        # Concatenate the shape and expression coefficients
-        scale = int(batch_size / betas.shape[0])
-        if scale > 1:
-            betas = betas.expand(scale, -1)
-        shape_components = torch.cat([betas, expression], dim=-1)
+        if pose2rot:
+            full_pose_rot_mat = batch_rodrigues(full_pose.reshape(-1, 3)).reshape(
+                -1, self.num_skeleton_joints, 3, 3)
+        else:
+            full_pose_rot_mat = full_pose
 
-        shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+        blendshape_coefficients = torch.cat([betas, expression], dim=-1)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.blendshapes, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose_rot_mat,
+            blendshapes=blendshape_coefficients,
+            transl=transl,
+            num_blendshapes=self.num_betas + self.num_expression_coeffs,
+            return_verts=return_verts,
+        )
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
+        rel_joints_transforms = lbs_output.rel_joints_transforms
 
-        vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot,
-                               )
-
-        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
-            dim=0).expand(batch_size, -1).contiguous()
-        lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            self.batch_size, 1, 1)
-        if self.use_face_contour:
-            lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
-                vertices, full_pose, self.dynamic_lmk_faces_idx,
-                self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain,
-                pose2rot=True,
-            )
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
-
-            lmk_faces_idx = torch.cat([lmk_faces_idx,
-                                       dyn_lmk_faces_idx], 1)
-            lmk_bary_coords = torch.cat(
-                [lmk_bary_coords.expand(batch_size, -1, -1),
-                 dyn_lmk_bary_coords], 1)
-
-        landmarks = vertices2landmarks(vertices, self.faces_tensor,
-                                       lmk_faces_idx,
-                                       lmk_bary_coords)
+        landmarks = self.landmark_object(
+            vertices=vertices, full_pose=full_pose,
+            joints_transforms=rel_joints_transforms,
+            blendshape_coefficients=blendshape_coefficients,
+            transl=transl, faces_tensor=self.faces_tensor, pose2rot=False)
 
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
-        # Map the joints to the current dataset
 
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints=joints, vertices=vertices)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
-        if apply_trans:
-            joints += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
-
-        v_shaped = None
-        if return_shaped:
-            v_shaped = self.v_template + blend_shapes(betas, self.shapedirs)
         output = SMPLXOutput(vertices=vertices if return_verts else None,
                              joints=joints,
                              betas=betas,
@@ -1282,8 +1402,10 @@ class SMPLX(SMPLH):
                              left_hand_pose=left_hand_pose,
                              right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
-                             v_shaped=v_shaped,
-                             full_pose=full_pose if return_full_pose else None)
+                             v_shaped=lbs_output.v_shaped,
+                             full_pose=full_pose,
+                             transl=transl,
+                             )
         return output
 
 
@@ -1322,6 +1444,7 @@ class SMPLXLayer(SMPLX):
         reye_pose: Optional[Tensor] = None,
         return_verts: bool = True,
         return_full_pose: bool = False,
+        v_template: Optional[Tensor] = None,
         **kwargs
     ) -> SMPLXOutput:
         '''
@@ -1425,55 +1548,44 @@ class SMPLXLayer(SMPLX):
              left_hand_pose.reshape(-1, self.NUM_HAND_JOINTS, 3, 3),
              right_hand_pose.reshape(-1, self.NUM_HAND_JOINTS, 3, 3)],
             dim=1)
-        shape_components = torch.cat([betas, expression], dim=-1)
 
-        shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+        if v_template is None:
+            v_template = self.v_template
 
-        vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights,
-                               pose2rot=False,
-                               )
+        blendshape_coefficients = torch.cat([betas, expression], dim=-1)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.blendshapes, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose,
+            blendshapes=blendshape_coefficients,
+            transl=transl,
+            num_blendshapes=self.num_betas + self.num_expression_coeffs,
+            return_verts=return_verts,
+        )
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
+        rel_joints_transforms = lbs_output.rel_joints_transforms
 
-        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
-            dim=0).expand(batch_size, -1).contiguous()
-        lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            batch_size, 1, 1)
-        if self.use_face_contour:
-            lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
-                vertices, full_pose,
-                self.dynamic_lmk_faces_idx,
-                self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain,
-                pose2rot=False,
-            )
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
-
-            lmk_faces_idx = torch.cat([lmk_faces_idx, dyn_lmk_faces_idx], 1)
-            lmk_bary_coords = torch.cat(
-                [lmk_bary_coords.expand(batch_size, -1, -1),
-                 dyn_lmk_bary_coords], 1)
-
-        landmarks = vertices2landmarks(vertices, self.faces_tensor,
-                                       lmk_faces_idx,
-                                       lmk_bary_coords)
+        landmarks = self.landmark_object(
+            vertices=vertices, full_pose=full_pose,
+            joints_transforms=rel_joints_transforms,
+            blendshape_coefficients=blendshape_coefficients,
+            transl=transl, faces_tensor=self.faces_tensor, pose2rot=False)
 
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
-        # Map the joints to the current dataset
 
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints=joints, vertices=vertices)
-
-        if transl is not None:
-            joints += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
         output = SMPLXOutput(vertices=vertices if return_verts else None,
                              joints=joints,
+                             joints_transforms=joints_transforms,
                              betas=betas,
                              expression=expression,
                              global_orient=global_orient,
@@ -1482,7 +1594,8 @@ class SMPLXLayer(SMPLX):
                              right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
                              transl=transl,
-                             full_pose=full_pose if return_full_pose else None)
+                             full_pose=full_pose,
+                             )
         return output
 
 
@@ -1491,6 +1604,8 @@ class MANO(SMPL):
     NUM_BODY_JOINTS = 1
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = NUM_BODY_JOINTS + NUM_HAND_JOINTS
+
+    NAME = 'MANO'
 
     def __init__(
         self,
@@ -1590,16 +1705,15 @@ class MANO(SMPL):
 
         if self.use_pca:
             self.register_buffer(
-                'hand_components',
-                torch.tensor(hand_components, dtype=dtype))
+                'hand_components', torch.tensor(hand_components, dtype=dtype))
 
         if self.flat_hand_mean:
             hand_mean = np.zeros_like(data_struct.hands_mean)
         else:
             hand_mean = data_struct.hands_mean
 
-        self.register_buffer('hand_mean',
-                             to_tensor(hand_mean, dtype=self.dtype))
+        self.register_buffer(
+            'hand_mean', to_tensor(hand_mean, dtype=self.dtype))
 
         # Create the buffers for the pose of the left hand
         hand_pose_dim = num_pca_comps if use_pca else 3 * self.NUM_HAND_JOINTS
@@ -1621,9 +1735,6 @@ class MANO(SMPL):
         pose_mean_tensor = pose_mean.clone().to(dtype)
         # pose_mean_tensor = torch.tensor(pose_mean, dtype=dtype)
         self.register_buffer('pose_mean', pose_mean_tensor)
-
-    def name(self) -> str:
-        return 'MANO'
 
     def create_mean_pose(self, data_struct, flat_hand_mean=False):
         # Create the array for the mean pose. If flat_hand is false, then use
@@ -1660,38 +1771,44 @@ class MANO(SMPL):
                      self.hand_pose)
 
         apply_trans = transl is not None or hasattr(self, 'transl')
-        if transl is None:
-            if hasattr(self, 'transl'):
-                transl = self.transl
+        if transl is None and hasattr(self, 'transl'):
+            transl = self.transl
 
         if self.use_pca:
-            hand_pose = torch.einsum(
-                'bi,ij->bj', [hand_pose, self.hand_components])
+            hand_pose = decode_pose_pca(hand_pose, self.hand_components)
 
         full_pose = torch.cat([global_orient, hand_pose], dim=1)
         full_pose += self.pose_mean
 
-        vertices, joints = lbs(betas, full_pose, self.v_template,
-                               self.shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=True,
-                               )
+        full_pose_rot_mat = batch_rodrigues(full_pose.reshape(-1, 3)).reshape(
+            -1, self.num_skeleton_joints, 3, 3)
 
-        # # Add pre-selected extra joints that might be needed
-        # joints = self.vertex_joint_selector(vertices, joints)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.shapedirs, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose_rot_mat,
+            blendshapes=betas, transl=transl,
+            num_blendshapes=self.num_betas,
+            return_verts=return_verts,
+        )
 
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints)
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
 
-        if apply_trans:
-            joints = joints + transl.unsqueeze(dim=1)
-            vertices = vertices + transl.unsqueeze(dim=1)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
-        output = MANOOutput(vertices=vertices if return_verts else None,
-                            joints=joints if return_verts else None,
+        output = MANOOutput(vertices=vertices,
+                            joints=joints,
+                            joints_transforms=joints_transforms,
+                            rel_joints_transforms=lbs_output.rel_joints_transforms,
                             betas=betas,
                             global_orient=global_orient,
                             hand_pose=hand_pose,
+                            transl=transl,
                             full_pose=full_pose if return_full_pose else None)
 
         return output
@@ -1723,16 +1840,18 @@ class MANOLayer(MANO):
     ) -> MANOOutput:
         ''' Forward pass for the MANO model
         '''
+        model_vars = [betas, global_orient, hand_pose, transl]
+        batch_size = batch_size_from_tensor_list(model_vars)
         device, dtype = self.shapedirs.device, self.shapedirs.dtype
+        targs = {'dtype': dtype, 'device': device}
+
         if global_orient is None:
-            batch_size = 1
-            global_orient = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(batch_size, -1, -1, -1).contiguous()
-        else:
-            batch_size = global_orient.shape[0]
+            global_orient = identity_rot_mats(
+                batch_size=batch_size, num_matrices=1, **targs)
         if hand_pose is None:
-            hand_pose = torch.eye(3, device=device, dtype=dtype).view(
-                1, 1, 3, 3).expand(batch_size, 15, -1, -1).contiguous()
+            hand_pose = identity_rot_mats(
+                batch_size=batch_size, num_matrices=self.NUM_HAND_JOINTS,
+                **targs)
         if betas is None:
             betas = torch.zeros(
                 [batch_size, self.num_betas], dtype=dtype, device=device)
@@ -1740,24 +1859,33 @@ class MANOLayer(MANO):
             transl = torch.zeros([batch_size, 3], dtype=dtype, device=device)
 
         full_pose = torch.cat([global_orient, hand_pose], dim=1)
-        vertices, joints = lbs(betas, full_pose, self.v_template,
-                               self.shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=False)
+        full_pose_rot_mat = batch_rodrigues(full_pose.reshape(-1, 3)).reshape(
+            -1, self.num_skeleton_joints, 3, 3)
 
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.shapedirs, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose_rot_mat,
+            blendshapes=betas, transl=transl,
+            num_blendshapes=self.num_betas,
+            return_verts=return_verts,
+        )
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
 
-        if transl is not None:
-            joints = joints + transl.unsqueeze(dim=1)
-            vertices = vertices + transl.unsqueeze(dim=1)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
         output = MANOOutput(
-            vertices=vertices if return_verts else None,
-            joints=joints if return_verts else None,
+            vertices=vertices,
+            joints=joints,
             betas=betas,
             global_orient=global_orient,
             hand_pose=hand_pose,
+            transl=transl,
             full_pose=full_pose if return_full_pose else None)
 
         return output
@@ -1784,11 +1912,12 @@ class FLAME(SMPL):
         leye_pose: Optional[Tensor] = None,
         create_reye_pose=True,
         reye_pose: Optional[Tensor] = None,
-        use_face_contour=False,
+        use_face_contour: bool = False,
         batch_size: int = 1,
         gender: str = 'neutral',
         dtype: torch.dtype = torch.float32,
         ext='pkl',
+        lmk_obj_type: str = 'from_vertices',
         **kwargs
     ) -> None:
         ''' FLAME model constructor
@@ -1925,6 +2054,10 @@ class FLAME(SMPL):
         self.register_buffer(
             'expr_dirs', to_tensor(to_np(expr_dirs), dtype=dtype))
 
+        # Concatenate the expression and shape blendshapes
+        blendshapes = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+        self.register_buffer('blendshapes', blendshapes)
+
         if create_expression:
             if expression is None:
                 default_expression = torch.zeros(
@@ -1943,36 +2076,29 @@ class FLAME(SMPL):
         with open(landmark_bcoord_filename, 'rb') as fp:
             landmarks_data = pickle.load(fp, encoding='latin1')
 
-        lmk_faces_idx = landmarks_data['lmk_face_idx'].astype(np.int64)
-        self.register_buffer('lmk_faces_idx',
-                             torch.tensor(lmk_faces_idx, dtype=torch.long))
-        lmk_bary_coords = landmarks_data['lmk_b_coords']
-        self.register_buffer('lmk_bary_coords',
-                             torch.tensor(lmk_bary_coords, dtype=dtype))
-        if self.use_face_contour:
-            face_contour_path = os.path.join(
-                model_path, 'flame_dynamic_embedding.npy')
-            contour_embeddings = np.load(face_contour_path,
-                                         allow_pickle=True,
-                                         encoding='latin1')[()]
+        face_contour_path = os.path.join(
+            model_path, 'flame_dynamic_embedding.npy')
+        contour_embeddings = np.load(
+            face_contour_path, allow_pickle=True, encoding='latin1')[()]
 
-            dynamic_lmk_faces_idx = np.array(
-                contour_embeddings['lmk_face_idx'], dtype=np.int64)
-            dynamic_lmk_faces_idx = torch.tensor(
-                dynamic_lmk_faces_idx,
-                dtype=torch.long)
-            self.register_buffer('dynamic_lmk_faces_idx',
-                                 dynamic_lmk_faces_idx)
+        dynamic_lmk_faces_idx = np.array(
+            contour_embeddings['lmk_face_idx'], dtype=np.int64)
+        dynamic_lmk_bary_coords = np.array(
+            contour_embeddings['lmk_b_coords'], dtype=np.float32)
+        # dynamic_lmk_bary_coords = torch.tensor(
+        #     dynamic_lmk_bary_coords, dtype=dtype)
 
-            dynamic_lmk_b_coords = torch.tensor(
-                contour_embeddings['lmk_b_coords'], dtype=dtype)
-            self.register_buffer(
-                'dynamic_lmk_bary_coords', dynamic_lmk_b_coords)
+        data_struct.lmk_faces_idx = landmarks_data['lmk_face_idx'].astype(
+            np.int64)
+        data_struct.lmk_bary_coords = landmarks_data['lmk_b_coords']
+        data_struct.dynamic_lmk_faces_idx = dynamic_lmk_faces_idx.astype(
+            np.int64)
+        data_struct.dynamic_lmk_bary_coords = dynamic_lmk_bary_coords
 
-            neck_kin_chain = find_joint_kin_chain(self.NECK_IDX, self.parents)
-            self.register_buffer(
-                'neck_kin_chain',
-                torch.tensor(neck_kin_chain, dtype=torch.long))
+        self.landmark_object = build_landmark_object(
+            data_struct, use_face_contour=use_face_contour,
+            neck_index=self.NECK_IDX, blendshapes=blendshapes, type=lmk_obj_type,
+        )
 
     @property
     def num_expression_coeffs(self):
@@ -2005,7 +2131,7 @@ class FLAME(SMPL):
         **kwargs
     ) -> FLAMEOutput:
         '''
-        Forward pass for the SMPLX model
+        Forward pass for the FLAME model
 
             Parameters
             ----------
@@ -2059,71 +2185,59 @@ class FLAME(SMPL):
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
 
-        apply_trans = transl is not None or hasattr(self, 'transl')
-        if transl is None:
-            if hasattr(self, 'transl'):
-                transl = self.transl
+        if transl is None and hasattr(self, 'transl'):
+            transl = self.transl
 
         full_pose = torch.cat(
             [global_orient, neck_pose, jaw_pose, leye_pose, reye_pose], dim=1)
+        if pose2rot:
+            full_pose_rot_mat = batch_rodrigues(full_pose.reshape(-1, 3)).reshape(
+                -1, self.num_skeleton_joints, 3, 3)
+        else:
+            full_pose_rot_mat = full_pose
 
-        batch_size = max(betas.shape[0], global_orient.shape[0],
-                         jaw_pose.shape[0])
-        # Concatenate the shape and expression coefficients
-        scale = int(batch_size / betas.shape[0])
-        if scale > 1:
-            betas = betas.expand(scale, -1)
-        shape_components = torch.cat([betas, expression], dim=-1)
-        shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+        blendshape_coefficients = torch.cat([betas, expression], dim=-1)
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.blendshapes, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose_rot_mat,
+            blendshapes=blendshape_coefficients,
+            transl=transl,
+            num_blendshapes=self.num_betas + self.num_expression_coeffs,
+            return_verts=return_verts,
+        )
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
+        rel_joints_transforms = lbs_output.rel_joints_transforms
 
-        vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot,
-                               )
-
-        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
-            dim=0).expand(batch_size, -1).contiguous()
-        lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            batch_size, 1, 1)
-        if self.use_face_contour:
-            lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
-                vertices, full_pose, self.dynamic_lmk_faces_idx,
-                self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain,
-                pose2rot=True,
-            )
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
-            lmk_faces_idx = torch.cat([lmk_faces_idx,
-                                       dyn_lmk_faces_idx], 1)
-            lmk_bary_coords = torch.cat(
-                [lmk_bary_coords.expand(batch_size, -1, -1),
-                 dyn_lmk_bary_coords], 1)
-
-        landmarks = vertices2landmarks(vertices, self.faces_tensor,
-                                       lmk_faces_idx,
-                                       lmk_bary_coords)
+        landmarks = self.landmark_object(
+            vertices=vertices, full_pose=full_pose,
+            joints_transforms=lbs_output.rel_joints_transforms,
+            blendshape_coefficients=blendshape_coefficients,
+            transl=transl, faces_tensor=self.faces_tensor, pose2rot=False)
 
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 
-        # Map the joints to the current dataset
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints=joints, vertices=vertices)
-
-        if apply_trans:
-            joints += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
         output = FLAMEOutput(vertices=vertices if return_verts else None,
                              joints=joints,
+                             joints_transforms=joints_transforms,
+                             rel_joints_transforms=rel_joints_transforms,
+                             transl=transl,
                              betas=betas,
                              expression=expression,
                              global_orient=global_orient,
                              neck_pose=neck_pose,
                              jaw_pose=jaw_pose,
+                             v_rest_pose=lbs_output.v_rest_pose,
                              full_pose=full_pose if return_full_pose else None)
         return output
 
@@ -2223,57 +2337,52 @@ class FLAMELayer(FLAME):
         full_pose = torch.cat(
             [global_orient, neck_pose, jaw_pose, leye_pose, reye_pose], dim=1)
 
-        shape_components = torch.cat([betas, expression], dim=-1)
-        shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+        blendshape_coefficients = torch.cat([betas, expression], dim=-1)
+        # shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
-        vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=False,
-                               )
+        lbs_output = smpl_functional(
+            self.v_template,
+            self.blendshapes, self.posedirs, self.J_regressor,
+            self.parents, self.lbs_weights,
+            full_pose=full_pose,
+            blendshapes=blendshape_coefficients,
+            transl=transl,
+            num_blendshapes=self.num_betas + self.num_expression_coeffs,
+            return_verts=return_verts,
+        )
+        vertices = lbs_output.vertices
+        joints = lbs_output.joints
+        joints_transforms = lbs_output.joints_transforms
+        rel_joints_transforms = lbs_output.rel_joints_transforms
 
-        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
-            dim=0).expand(batch_size, -1).contiguous()
-        lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            batch_size, 1, 1)
-        if self.use_face_contour:
-            lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
-                vertices, full_pose, self.dynamic_lmk_faces_idx,
-                self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain,
-                pose2rot=False,
-            )
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
-            lmk_faces_idx = torch.cat([lmk_faces_idx,
-                                       dyn_lmk_faces_idx], 1)
-            lmk_bary_coords = torch.cat(
-                [lmk_bary_coords.expand(batch_size, -1, -1),
-                 dyn_lmk_bary_coords], 1)
-
-        landmarks = vertices2landmarks(vertices, self.faces_tensor,
-                                       lmk_faces_idx,
-                                       lmk_bary_coords)
+        landmarks = self.landmark_object(
+            vertices=vertices, full_pose=full_pose,
+            joints_transforms=rel_joints_transforms,
+            blendshape_coefficients=blendshape_coefficients,
+            transl=transl, faces_tensor=self.faces_tensor, pose2rot=False)
 
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 
-        # Map the joints to the current dataset
-        if self.joint_mapper is not None:
-            joints = self.joint_mapper(joints=joints, vertices=vertices)
-
-        joints += transl.unsqueeze(dim=1)
-        vertices += transl.unsqueeze(dim=1)
+        # Map the joints and their rigid transformations to the new joint order
+        joints, joints_transforms = self.remap_joints(
+            joints, joints_transforms)
 
         output = FLAMEOutput(vertices=vertices if return_verts else None,
                              joints=joints,
+                             joints_transforms=joints_transforms,
+                             rel_joints_transforms=rel_joints_transforms,
                              betas=betas,
                              expression=expression,
+                             transl=transl,
                              global_orient=global_orient,
                              neck_pose=neck_pose,
                              jaw_pose=jaw_pose,
-                             full_pose=full_pose if return_full_pose else None)
+                             full_pose=full_pose,
+                             v_rest_pose=lbs_output.v_rest_pose,
+                             )
         return output
 
 
