@@ -29,26 +29,36 @@ Array = NewType('Array', np.ndarray)
 class LBSOutput:
     _vertices: Optional[Tensor] = None
     _joints_transforms: Optional[Tensor] = None
+    _rel_joints_transforms: Optional[Tensor] = None
     _v_shaped: Optional[Tensor] = None
+    _v_rest_pose: Optional[Tensor] = None
 
     @property
-    def joints(self):
+    def joints(self) -> Tensor:
         if self._joints_transforms is None:
             return None
         else:
             return self._joints_transforms[..., :3, 3]
 
     @property
-    def vertices(self):
+    def vertices(self) -> Tensor:
         return self._vertices
 
     @property
-    def v_shaped(self):
+    def v_shaped(self) -> Tensor:
         return self._v_shaped
 
     @property
-    def joints_transforms(self):
+    def v_rest_pose(self) -> Tensor:
+        return self._v_rest_pose
+
+    @property
+    def joints_transforms(self) -> Tensor:
         return self._joints_transforms
+
+    @property
+    def rel_joints_transforms(self) -> Tensor:
+        return self._rel_joints_transforms
 
 
 @dataclass
@@ -56,10 +66,12 @@ class ModelOutput:
     vertices: Optional[Tensor] = None
     joints: Optional[Tensor] = None
     joints_transforms: Optional[Tensor] = None
+    rel_joints_transforms: Optional[Tensor] = None
     full_pose: Optional[Tensor] = None
     global_orient: Optional[Tensor] = None
     transl: Optional[Tensor] = None
     v_shaped: Optional[Tensor] = None
+    v_rest_pose: Optional[Tensor] = None
 
     def __getitem__(self, key):
         return getattr(self, key)
