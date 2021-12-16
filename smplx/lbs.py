@@ -14,21 +14,97 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
-
 from typing import Tuple, List, Optional
 import numpy as np
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import rot_mat_to_euler, Tensor, LBSOutput
+from .utils import (rot_mat_to_euler, Tensor, Array, LBSOutput,
+                    find_joint_kin_chain, Struct)
+
+import sys
+from loguru import logger
+
+
+def compute_face_landmarks(
+    vertices: Tensor,
+    full_pose: Tensor,
+    lmk_faces_idx: Tensor,
+    lmk_bary_coords: Tensor,
+    faces_tensor: Tensor,
+    use_face_contour: bool = False,
+    dynamic_lmk_faces_idx: Optional[Tensor] = None,
+    dynamic_lmk_bary_coords: Optional[Tensor] = None,
+    neck_kin_chain: Optional[Tensor] = None,
+    pose2rot: bool = True,
+) -> Tensor:
+    batch_size = len(vertices)
+    lmk_faces_idx = lmk_faces_idx.unsqueeze(dim=0).repeat(batch_size, 1)
+    lmk_bary_coords = lmk_bary_coords.unsqueeze(dim=0).repeat(
+        batch_size, 1, 1)
+    if use_face_contour:
+        assert dynamic_lmk_faces_idx is not None, (
+            'Requested dynamic landmarks, but the face index tensor was not'
+            ' given')
+        assert dynamic_lmk_bary_coords is not None, (
+            'Requested dynamic landmarks, but the barycentric coordinates'
+            ' tensor was not given')
+        lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
+            full_pose,
+            dynamic_lmk_faces_idx,
+            dynamic_lmk_bary_coords,
+            neck_kin_chain,
+            pose2rot=pose2rot,
+        )
+        dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
+        lmk_faces_idx = torch.cat([lmk_faces_idx, dyn_lmk_faces_idx], dim=1)
+        lmk_bary_coords = torch.cat(
+            [lmk_bary_coords.expand(batch_size, -1, -1),
+                dyn_lmk_bary_coords], 1)
+
+    landmarks = vertices2landmarks(
+        vertices, faces_tensor, lmk_faces_idx, lmk_bary_coords)
+    return landmarks
+
+
+def find_y_euler_lut_key(
+    pose: Tensor,
+    neck_kin_chain: Tensor,
+    pose2rot: bool = True,
+) -> Tensor:
+    ''' Computes the LUT key used to select the correct
+    '''
+    dtype, device = pose.dtype, pose.device
+    batch_size = len(pose)
+
+    if pose2rot:
+        aa_pose = torch.index_select(
+            pose.view(batch_size, -1, 3), 1, neck_kin_chain)
+        rot_mats = batch_rodrigues(
+            aa_pose.view(-1, 3)).view(batch_size, -1, 3, 3)
+    else:
+        rot_mats = torch.index_select(
+            pose.view(batch_size, -1, 3, 3), 1, neck_kin_chain)
+
+    rel_rot_mat = torch.eye(3, device=device, dtype=dtype).unsqueeze_(
+        dim=0).repeat(batch_size, 1, 1)
+    for idx in range(len(neck_kin_chain)):
+        rel_rot_mat = torch.bmm(rot_mats[:, idx], rel_rot_mat)
+
+    y_rot_angle = torch.round(
+        torch.clamp(-rot_mat_to_euler(rel_rot_mat) * 180.0 / np.pi,
+                    max=39)).to(dtype=torch.long)
+    neg_mask = y_rot_angle.lt(0).to(dtype=torch.long)
+    mask = y_rot_angle.lt(-39).to(dtype=torch.long)
+    neg_vals = mask * 78 + (1 - mask) * (39 - y_rot_angle)
+    y_rot_angle = (neg_mask * neg_vals + (1 - neg_mask) * y_rot_angle)
+
+    return y_rot_angle
 
 
 def find_dynamic_lmk_idx_and_bcoords(
-    vertices: Tensor,
     pose: Tensor,
     dynamic_lmk_faces_idx: Tensor,
     dynamic_lmk_b_coords: Tensor,
@@ -58,7 +134,6 @@ def find_dynamic_lmk_idx_and_bcoords(
         neck_kin_chain: list
             A python list that contains the indices of the joints that form the
             kinematic chain of the neck.
-        dtype: torch.dtype, optional
 
         Returns
         -------
@@ -70,31 +145,7 @@ def find_dynamic_lmk_idx_and_bcoords(
             will be used to compute the current dynamic landmarks.
     '''
 
-    dtype = vertices.dtype
-    batch_size = vertices.shape[0]
-
-    if pose2rot:
-        aa_pose = torch.index_select(pose.view(batch_size, -1, 3), 1,
-                                     neck_kin_chain)
-        rot_mats = batch_rodrigues(
-            aa_pose.view(-1, 3)).view(batch_size, -1, 3, 3)
-    else:
-        rot_mats = torch.index_select(
-            pose.view(batch_size, -1, 3, 3), 1, neck_kin_chain)
-
-    rel_rot_mat = torch.eye(
-        3, device=vertices.device, dtype=dtype).unsqueeze_(dim=0).repeat(
-            batch_size, 1, 1)
-    for idx in range(len(neck_kin_chain)):
-        rel_rot_mat = torch.bmm(rot_mats[:, idx], rel_rot_mat)
-
-    y_rot_angle = torch.round(
-        torch.clamp(-rot_mat_to_euler(rel_rot_mat) * 180.0 / np.pi,
-                    max=39)).to(dtype=torch.long)
-    neg_mask = y_rot_angle.lt(0).to(dtype=torch.long)
-    mask = y_rot_angle.lt(-39).to(dtype=torch.long)
-    neg_vals = mask * 78 + (1 - mask) * (39 - y_rot_angle)
-    y_rot_angle = (neg_mask * neg_vals + (1 - neg_mask) * y_rot_angle)
+    y_rot_angle = find_y_euler_lut_key(pose, neck_kin_chain, pose2rot=pose2rot)
 
     dyn_lmk_faces_idx = torch.index_select(
         dynamic_lmk_faces_idx, 0, y_rot_angle)
@@ -145,6 +196,22 @@ def vertices2landmarks(
 
     landmarks = torch.einsum('blfi,blf->bli', [lmk_vertices, lmk_bary_coords])
     return landmarks
+
+
+def pose_blendshapes(
+    rot_mats: Tensor,
+    posedirs: Tensor,
+) -> Tensor:
+    ''' Computes pose blendshapes from the input pose vector
+    '''
+    batch_size = len(rot_mats)
+    dtype, device = rot_mats.dtype, rot_mats.device
+
+    ident = torch.eye(3, dtype=dtype, device=device)
+    pose_feature = rot_mats[:, 1:].view(batch_size, -1, 3, 3) - ident
+    pose_offsets = torch.matmul(
+        pose_feature.view(batch_size, -1), posedirs).view(batch_size, -1, 3)
+    return pose_offsets
 
 
 def lbs(
@@ -210,23 +277,15 @@ def lbs(
     # NxJx3 array
     J = vertices2joints(J_regressor, v_shaped)
 
+    if pose2rot:
+        rot_mats = batch_rodrigues(pose.view(-1, 3))
+    else:
+        rot_mats = pose
+    rot_mats = rot_mats.view([batch_size, -1, 3, 3])
+
     # 3. Add pose blend shapes
     # N x J x 3 x 3
-    ident = torch.eye(3, dtype=dtype, device=device)
-    if pose2rot:
-        rot_mats = batch_rodrigues(pose.view(-1, 3)).view(
-            [batch_size, -1, 3, 3])
-
-        pose_feature = (rot_mats[:, 1:, :, :] - ident).view([batch_size, -1])
-        # (N x P) x (P, V * 3) -> N x V x 3
-        pose_offsets = torch.matmul(
-            pose_feature, posedirs).view(batch_size, -1, 3)
-    else:
-        pose_feature = pose[:, 1:].view(batch_size, -1, 3, 3) - ident
-        rot_mats = pose.view(batch_size, -1, 3, 3)
-
-        pose_offsets = torch.matmul(pose_feature.view(batch_size, -1),
-                                    posedirs).view(batch_size, -1, 3)
+    pose_offsets = pose_blendshapes(rot_mats, posedirs=posedirs)
 
     v_posed = pose_offsets + v_shaped
     # 4. Get the global joint location
@@ -252,13 +311,20 @@ def lbs(
 
     if transl is not None:
         # Update the translation for the
-        abs_transforms[..., :3, 3] += transl.unsqueeze(dim=1)
+        transl_transf = transform_mat(
+            torch.eye(3, dtype=dtype, device=device)[None].repeat(
+                batch_size, 1, 1), transl.unsqueeze(dim=-1),)
+        abs_transforms = torch.einsum(
+            'bmk,bjkn->bjmn', transl_transf, abs_transforms)
+        # abs_transforms[..., :3, 3] += transl.unsqueeze(dim=1)
         verts += transl.unsqueeze(dim=1)
 
     return LBSOutput(
         _vertices=verts,
         _joints_transforms=abs_transforms,
-        _v_shaped=v_shaped
+        _rel_joints_transforms=rel_transforms,
+        _v_shaped=v_shaped,
+        _v_rest_pose=v_posed,
     )
 
 
@@ -362,6 +428,7 @@ def batch_rigid_transform(
     parents: Tensor,
     parallel_exec: List[List[int]] = None,
     task_group_parents: List[List[int]] = None,
+    transl: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor, Tensor]:
     """
     Applies a batch of rigid transformations to the joints
@@ -445,3 +512,323 @@ def batch_rigid_transform(
         torch.matmul(transforms, joints_homogen), [3, 0, 0, 0, 0, 0, 0, 0])
 
     return posed_joints, rel_transforms, transforms
+
+
+class LandmarksFromVertices(nn.Module):
+    ''' Computes landmarks from a set of vertices with barycentric interpolation
+
+    '''
+
+    def __init__(
+        self,
+        lmk_faces_idx: Array,
+        lmk_bary_coords: Array,
+        use_face_contour: bool = False,
+        dynamic_lmk_faces_idx: Optional[Array] = False,
+        dynamic_lmk_bary_coords: Optional[Array] = False,
+        neck_index: int = 1,
+        model_kin_chain: Optional[Array] = False,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
+        super().__init__()
+
+        self.register_buffer(
+            'lmk_faces_idx', torch.tensor(lmk_faces_idx, dtype=torch.int64))
+        self.register_buffer(
+            'lmk_bary_coords', torch.tensor(lmk_bary_coords, dtype=dtype))
+
+        self.use_face_contour = use_face_contour
+        if self.use_face_contour:
+            if not torch.is_tensor(dynamic_lmk_faces_idx):
+                dynamic_lmk_faces_idx = torch.tensor(
+                    dynamic_lmk_faces_idx, dtype=torch.long)
+            self.register_buffer(
+                'dynamic_lmk_faces_idx', dynamic_lmk_faces_idx)
+
+            if not torch.is_tensor(dynamic_lmk_bary_coords):
+                dynamic_lmk_bary_coords = torch.tensor(
+                    dynamic_lmk_bary_coords, dtype=dtype)
+            self.register_buffer(
+                'dynamic_lmk_bary_coords', dynamic_lmk_bary_coords)
+
+            neck_kin_chain = find_joint_kin_chain(neck_index, model_kin_chain)
+            self.register_buffer(
+                'neck_kin_chain',
+                torch.tensor(neck_kin_chain, dtype=torch.long))
+
+    @property
+    def num_static_landmarks(self) -> int:
+        return len(self.lmk_bary_coords)
+
+    @property
+    def num_dynamic_landmarks(self) -> int:
+        return len(getattr(self, 'dynamic_lmk_bary_coords', []))
+
+    @property
+    def num_landmarks(self) -> int:
+        return self.num_static_landmarks + self.num_dynamic_landmarks
+
+    def forward(
+        self,
+        vertices: Tensor,
+        full_pose: Tensor,
+        faces_tensor: Tensor,
+        pose2rot: bool = True,
+        **kwargs,
+    ) -> Tensor:
+        return compute_face_landmarks(
+            vertices=vertices,
+            full_pose=full_pose,
+            lmk_faces_idx=self.lmk_faces_idx,
+            lmk_bary_coords=self.lmk_bary_coords,
+            faces_tensor=faces_tensor,
+            dynamic_lmk_faces_idx=getattr(self, 'dynamic_lmk_faces_idx', None),
+            dynamic_lmk_bary_coords=getattr(
+                self, 'dynamic_lmk_bary_coords', None),
+            neck_kin_chain=getattr(self, 'neck_kin_chain', None),
+            pose2rot=pose2rot,
+            use_face_contour=self.use_face_contour,
+        )
+
+
+class LandmarksFromJointTransforms(nn.Module):
+    ''' Computes landmarks with linear blend skinning of a vertex subset
+    '''
+
+    def __init__(
+        self,
+        lmk_faces_idx: Array,
+        lmk_bary_coords: Array,
+        skinning_weights: Array,
+        v_template: Array,
+        blendshapes: Array,
+        posedirs: Array,
+        faces: Array,
+        use_face_contour: bool = False,
+        dynamic_lmk_faces_idx: Optional[Array] = False,
+        dynamic_lmk_bary_coords: Optional[Array] = False,
+        neck_index: int = 1,
+        model_kin_chain: Optional[Array] = False,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
+        super().__init__()
+
+        # Store the landmark barycentric coordinates
+        self.register_buffer(
+            'lmk_bary_coords', torch.tensor(lmk_bary_coords, dtype=dtype))
+
+        # Get the vertex indices needed to compute the landmarks
+        vertex_indices = faces[lmk_faces_idx]
+
+        self._num_static_lmk_vertices = len(vertex_indices)
+
+        self.use_face_contour = use_face_contour
+        if self.use_face_contour:
+            assert dynamic_lmk_faces_idx is not None, (
+                'Requested dynamic landmarks, but the face index tensor was not'
+                ' given')
+            assert dynamic_lmk_bary_coords is not None, (
+                'Requested dynamic landmarks, but the barycentric coordinates'
+                ' tensor was not given')
+            # Store the vertices for the dynamic landmarks
+            dynamic_vertex_indices = faces[dynamic_lmk_faces_idx]
+            self._num_dynamic_lmk_vertices = len(dynamic_vertex_indices)
+
+            vertex_indices = np.concatenate(
+                [vertex_indices.flatten(), dynamic_vertex_indices.flatten()])
+
+            dynamic_lmk_bary_coords = torch.tensor(
+                dynamic_lmk_bary_coords, dtype=dtype)
+            self.register_buffer(
+                'dynamic_lmk_bary_coords', dynamic_lmk_bary_coords)
+
+            # Get the kinematic chain for the neck
+            neck_kin_chain = find_joint_kin_chain(neck_index, model_kin_chain)
+            self.register_buffer(
+                'neck_kin_chain',
+                torch.tensor(neck_kin_chain, dtype=torch.long))
+
+        # The vertex list might contain duplicates, so find the unique
+        # vertices to minimize computations
+        vertex_indices, unique_to_full_indices = np.unique(
+            vertex_indices, return_inverse=True)
+        self.vertex_indices = vertex_indices
+
+        unique_to_full_indices_tensor = torch.tensor(
+            unique_to_full_indices, dtype=torch.int64)
+        self.register_buffer(
+            'unique_to_full_indices', unique_to_full_indices_tensor)
+
+        # Get the skinning weights for the selected vertices
+        lmk_skinning_weights = skinning_weights[vertex_indices]
+        lmk_skinning_weights_tensor = torch.tensor(
+            lmk_skinning_weights, dtype=dtype)
+        self.register_buffer(
+            'lmk_skinning_weights', lmk_skinning_weights_tensor)
+
+        # Store the blend shape components for the landmark vertices.
+        lmk_blendshapes = blendshapes[vertex_indices]
+        lmk_blendshapes_tensor = torch.tensor(lmk_blendshapes, dtype=dtype)
+        self.register_buffer('lmk_blendshapes', lmk_blendshapes_tensor)
+
+        # Store the pose blend shapes for the landmark vertices.
+        posedirs = posedirs.reshape(-1, len(v_template), 3)
+        lmk_posedirs = posedirs[:, vertex_indices].reshape(
+            -1, len(vertex_indices) * 3)
+        lmk_posedirs_tensor = torch.tensor(lmk_posedirs, dtype=dtype)
+        self.register_buffer('lmk_posedirs', lmk_posedirs_tensor)
+
+        # Store the landmark positions on the template
+        lmk_template = v_template[vertex_indices]
+        lmk_template_tensor = torch.tensor(lmk_template, dtype=dtype)
+        self.register_buffer('lmk_template', lmk_template_tensor)
+
+    @property
+    def num_static_landmarks(self) -> int:
+        return len(self.lmk_bary_coords)
+
+    @property
+    def num_dynamic_landmarks(self) -> int:
+        return len(getattr(self, 'dynamic_lmk_bary_coords', []))
+
+    @property
+    def num_landmarks(self) -> int:
+        return self.num_static_landmarks + self.num_dynamic_landmarks
+
+    def forward(
+        self,
+        joints_transforms: Optional[Tensor] = None,
+        blendshape_coefficients: Optional[Tensor] = None,
+        full_pose: Optional[Tensor] = None,
+        pose2rot: bool = True,
+        transl: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Tensor:
+        ''' Computes the landmarks
+
+            Parameters
+            ----------
+                joints_transforms: Optional[Tensor] = None
+                    A tensor with shape BxJx4x4 that contains the
+                    root-relative joint transformations.
+                blendshape_coefficients: Optional[Tensor] = None
+                    The blendshape coefficients.
+                full_pose: Optional[Tensor] = None
+                    The full pose vector.
+                pose2rot: bool = True
+                    Whether to convert the pose vector to rotation matrices.
+                transl: Optional[Tensor] = None
+                    The root translation tensor.
+            Returns
+            -------
+                The tensor that contains the compute landmarks
+        '''
+
+        assert joints_transforms is not None, (
+            'Cannot compute landmarks when joint_transforms is None')
+
+        vertices_for_landmarks_transforms = torch.einsum(
+            'lj,bjmn->blmn', self.lmk_skinning_weights, joints_transforms)
+        batch_size = len(joints_transforms)
+
+        if pose2rot:
+            rot_mats = batch_rodrigues(
+                full_pose.view(-1, 3)).view([batch_size, -1, 3, 3])
+        else:
+            rot_mats = full_pose
+        rot_mats = rot_mats.view([batch_size, -1, 3, 3])
+
+        # Compute the landmark vertices at rest pose
+        lmk_verts_rest = self.lmk_template + blend_shapes(
+            blendshape_coefficients, self.lmk_blendshapes) + pose_blendshapes(
+                rot_mats, posedirs=self.lmk_posedirs)
+
+        # Convert the vertices to homogeneous coordinates
+        lmk_verts_rest_homo = F.pad(lmk_verts_rest, [0, 1], value=1.0)
+
+        lmk_vertices_unique = torch.einsum(
+            'bvmn,bvn->bvm', vertices_for_landmarks_transforms,
+            lmk_verts_rest_homo)[..., :3]
+        if transl is not None:
+            lmk_vertices_unique += transl.unsqueeze(dim=1)
+
+        lmk_vertices = lmk_vertices_unique[:, self.unique_to_full_indices]
+
+        static_lmk_vertices = lmk_vertices[
+            :, :self._num_static_lmk_vertices * 3].reshape(
+                batch_size, self.num_static_landmarks, 3, 3)
+
+        static_landmarks = torch.einsum(
+            'lv,blvm->blm', self.lmk_bary_coords,
+            static_lmk_vertices.reshape(
+                batch_size, self.num_static_landmarks, 3, 3),)
+        landmarks = static_landmarks
+        if self.use_face_contour:
+            dyn_lmk_bary_coords = self.dynamic_lmk_bary_coords
+            dyn_lmk_shape = dyn_lmk_bary_coords.shape[:2]
+
+            start = self._num_static_lmk_vertices * 3
+            dyn_lmk_vertices = lmk_vertices[:, start:].reshape(
+                batch_size, *dyn_lmk_shape, 3, 3)
+
+            y_rot_angle = find_y_euler_lut_key(
+                full_pose, self.neck_kin_chain, pose2rot=pose2rot)
+
+            curr_dyn_bary_coords = dyn_lmk_bary_coords[y_rot_angle]
+
+            ones = [1] * len(dyn_lmk_vertices.shape[1:])
+            gather_indices = y_rot_angle.reshape(batch_size, *ones).repeat(
+                1, 1, *dyn_lmk_vertices.shape[2:])
+            curr_dyn_lmk_vertices = torch.gather(
+                dyn_lmk_vertices, 1, gather_indices).flatten(end_dim=1)
+
+            dynamic_landmarks = torch.einsum(
+                'blv,blvm->blm', curr_dyn_bary_coords, curr_dyn_lmk_vertices)
+            landmarks = torch.cat([static_landmarks, dynamic_landmarks], dim=1)
+
+        return landmarks
+
+
+def build_landmark_object(
+    data_struct: Struct,
+    blendshapes: Tensor,
+    type: str = 'from_vertices',
+    use_face_contour: bool = False,
+    neck_index: int = 1,
+):
+    num_pose_basis = data_struct.posedirs.shape[-1]
+    posedirs = np.reshape(data_struct.posedirs, [-1, num_pose_basis]).T
+
+    if torch.is_tensor(blendshapes):
+        blendshapes = blendshapes.detach().cpu().numpy()
+
+    model_kin_chain = data_struct.kintree_table[0].copy()
+    model_kin_chain[0] = -1
+
+    if type == 'from_vertices':
+        return LandmarksFromVertices(
+            lmk_faces_idx=data_struct.lmk_faces_idx,
+            lmk_bary_coords=data_struct.lmk_bary_coords,
+            use_face_contour=use_face_contour,
+            dynamic_lmk_faces_idx=data_struct.dynamic_lmk_faces_idx,
+            dynamic_lmk_bary_coords=data_struct.dynamic_lmk_bary_coords,
+            neck_index=neck_index,
+            model_kin_chain=model_kin_chain,
+        )
+    elif type == 'from_transforms':
+        return LandmarksFromJointTransforms(
+            skinning_weights=data_struct.weights,
+            v_template=data_struct.v_template,
+            faces=data_struct.f,
+            lmk_faces_idx=data_struct.lmk_faces_idx,
+            lmk_bary_coords=data_struct.lmk_bary_coords,
+            use_face_contour=use_face_contour,
+            dynamic_lmk_faces_idx=data_struct.dynamic_lmk_faces_idx,
+            dynamic_lmk_bary_coords=data_struct.dynamic_lmk_bary_coords,
+            posedirs=posedirs,
+            blendshapes=blendshapes,
+            neck_index=neck_index,
+            model_kin_chain=model_kin_chain,
+        )
+    else:
+        raise ValueError(f'Unknown landmark computation object: {type}')
