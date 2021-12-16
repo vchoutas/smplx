@@ -207,3 +207,23 @@ def rot_mat_to_euler(rot_mats):
     sy = torch.sqrt(rot_mats[:, 0, 0] * rot_mats[:, 0, 0] +
                     rot_mats[:, 1, 0] * rot_mats[:, 1, 0])
     return torch.atan2(-rot_mats[:, 2, 0], sy)
+
+
+def batch_size_from_tensor_list(tensor_list: List[Tensor]) -> int:
+    batch_size = 1
+    for tensor in tensor_list:
+        if tensor is None:
+            continue
+        batch_size = max(batch_size, len(tensor))
+    return batch_size
+
+
+def identity_rot_mats(
+    batch_size: int = 1,
+    num_matrices: int = 1,
+    device: Optional[torch.device] = torch.device('cpu'),
+    dtype: Optional[torch.dtype] = torch.float32,
+) -> Tensor:
+    targs = {'dtype': dtype, 'device': device}
+    return torch.eye(3, **targs).view(
+        1, 1, 3, 3).repeat(batch_size, num_matrices, -1, -1)
