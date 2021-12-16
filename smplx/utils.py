@@ -14,6 +14,7 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
+from __future__ import annotations
 from typing import NewType, Union, Optional, List, Tuple
 from dataclasses import dataclass, asdict, fields
 
@@ -72,6 +73,18 @@ class ModelOutput:
     transl: Optional[Tensor] = None
     v_shaped: Optional[Tensor] = None
     v_rest_pose: Optional[Tensor] = None
+
+    @classmethod
+    def from_lbs_output(cls, lbs_output: LBSOutput, **kwargs) -> ModelOutput:
+        return cls(
+            vertices=lbs_output.vertices,
+            joints=lbs_output.joints,
+            joints_transforms=lbs_output.joints_transforms,
+            rel_joints_transforms=lbs_output.rel_joints_transforms,
+            v_shaped=lbs_output.v_shaped,
+            v_rest_pose=lbs_output.v_rest_pose,
+            **kwargs,
+        )
 
     def __getitem__(self, key):
         return getattr(self, key)
