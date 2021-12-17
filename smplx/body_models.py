@@ -489,6 +489,8 @@ class SMPL(nn.Module):
             blendshapes=betas, transl=transl,
             num_blendshapes=self.num_betas,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
 
         joints = lbs_output.joints
@@ -605,6 +607,8 @@ class SMPLLayer(SMPL):
             transl=transl,
             num_blendshapes=self.num_betas,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
 
         joints = lbs_output.joints
@@ -866,6 +870,8 @@ class SMPLH(SMPL):
             blendshapes=betas, transl=transl,
             num_blendshapes=self.num_betas,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
         vertices = lbs_output.vertices
         joints = lbs_output.joints
@@ -1010,6 +1016,8 @@ class SMPLHLayer(SMPLH):
             transl=transl,
             num_blendshapes=self.num_betas,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
         vertices = lbs_output.vertices
         joints = lbs_output.joints
@@ -1372,6 +1380,8 @@ class SMPLX(SMPLH):
             transl=transl,
             num_blendshapes=self.num_betas + self.num_expression_coeffs,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
         vertices = lbs_output.vertices
         joints = lbs_output.joints
@@ -1562,6 +1572,8 @@ class SMPLXLayer(SMPLX):
             transl=transl,
             num_blendshapes=self.num_betas + self.num_expression_coeffs,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
         vertices = lbs_output.vertices
         joints = lbs_output.joints
@@ -1791,6 +1803,8 @@ class MANO(SMPL):
             blendshapes=betas, transl=transl,
             num_blendshapes=self.num_betas,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
 
         vertices = lbs_output.vertices
@@ -1870,6 +1884,8 @@ class MANOLayer(MANO):
             blendshapes=betas, transl=transl,
             num_blendshapes=self.num_betas,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
         vertices = lbs_output.vertices
         joints = lbs_output.joints
@@ -2206,6 +2222,8 @@ class FLAME(SMPL):
             transl=transl,
             num_blendshapes=self.num_betas + self.num_expression_coeffs,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
         vertices = lbs_output.vertices
         joints = lbs_output.joints
@@ -2349,6 +2367,8 @@ class FLAMELayer(FLAME):
             transl=transl,
             num_blendshapes=self.num_betas + self.num_expression_coeffs,
             return_verts=return_verts,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
         )
         vertices = lbs_output.vertices
         joints = lbs_output.joints
