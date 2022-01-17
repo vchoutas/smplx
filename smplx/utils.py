@@ -33,6 +33,11 @@ class LBSOutput:
     _rel_joints_transforms: Optional[Tensor] = None
     _v_shaped: Optional[Tensor] = None
     _v_rest_pose: Optional[Tensor] = None
+    _skinning_transforms: Optional[Tensor] = None
+
+    @property
+    def skinning_transforms(self) -> Tensor:
+        return self._skinning_transforms
 
     @property
     def joints(self) -> Tensor:
