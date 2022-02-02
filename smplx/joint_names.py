@@ -14,6 +14,8 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
+import numpy as np
+
 JOINT_NAMES = [
     "pelvis",
     "left_hip",
@@ -239,29 +241,80 @@ SMPLH_JOINT_NAMES = [
     "right_pinky",
 ]
 
-SMPL_JOINTS = [
+SMPL_JOINT_NAMES = [
     "pelvis",
-    "l_hip",
-    "r_hip",
+    "left_hip",
+    "right_hip",
     "spine1",
-    "l_knee",
-    "r_knee",
+    "left_knee",
+    "right_knee",
     "spine2",
-    "l_ankle",
-    "r_ankle",
+    "left_ankle",
+    "right_ankle",
     "spine3",
-    "l_foot",
-    "r_foot",
+    "left_foot",
+    "right_foot",
     "neck",
-    "l_collar",
-    "r_collar",
+    "left_collar",
+    "right_collar",
     "head",
-    "l_shoulder",
-    "r_shoulder",
-    "l_elbow",
-    "r_elbow",
-    "l_wrist",
-    "r_wrist",
-    "l_hand",
-    "r_hand",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hand",
+    "right_hand",
 ]
+
+
+class Body:
+    """
+    Class for storing a single body pose.
+    """
+
+    def __init__(self, joints, joint_names):
+        assert joints.ndim > 1
+        assert joints.shape[0] == len(joint_names)
+        self.joints = {}
+        for i, j in enumerate(joint_names):
+            self.joints[j] = joints[i]
+
+    @staticmethod
+    def from_smpl(joints):
+        """
+        Create a Body object from SMPL joints.
+        """
+        return Body(joints, SMPL_JOINT_NAMES)
+
+    @staticmethod
+    def from_smplh(joints):
+        """
+        Create a Body object from SMPLH joints.
+        """
+        return Body(joints, SMPLH_JOINT_NAMES)
+
+    def _as(self, joint_names):
+        """
+        Return a Body object with the specified joint names.
+        """
+        joint_list = []
+        for j in joint_names:
+            if j not in self.joints:
+                joint_list.append(np.zeros_like(self.joints["spine1"]))
+            else:
+                joint_list.append(self.joints[j])
+        return np.stack(joint_list, axis=0)
+
+    def as_smpl(self):
+        """
+        Convert the body to SMPL joints.
+        """
+        return self._as(SMPL_JOINT_NAMES)
+
+    def as_smplh(self):
+        """
+        Convert the body to SMPLH joints.
+        """
+        return self._as(SMPLH_JOINT_NAMES)
