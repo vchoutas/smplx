@@ -36,10 +36,10 @@ from .utils import read_deformation_transfer, np_mesh_to_o3d
 def main() -> None:
     exp_cfg = parse_args()
 
-    device = torch.device('cuda')
-    if not torch.cuda.is_available():
-        logger.error('CUDA is not available!')
-        sys.exit(3)
+    device = torch.device('cpu')
+    # if not torch.cuda.is_available():
+    #     logger.error('CUDA is not available!')
+    #     sys.exit(3)
 
     logger.remove()
     logger.add(
