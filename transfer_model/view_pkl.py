@@ -30,12 +30,13 @@ def main(model_folder,
     for k,v in motion.items():
         if isinstance(v, np.ndarray):
             print(k, motion[k].shape, motion[k].dtype)
-            if motion[k].dtype in ("<U7", "<U5", "<U4", "object"):
+            if motion[k].dtype in ("<U7", "<U5", "<U4", "object", "|S7"):
                 _motion[k] = str(motion[k])
             else:
                 _motion[k] = torch.from_numpy(motion[k]).float()
         else:
             print(k, v)
+            _motion[k] = v
     motion = _motion
 
     if "poses" in motion:
