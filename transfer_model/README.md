@@ -5,6 +5,7 @@
   * [Description](#description)
   * [Using the code](#using-the-code)
     * [Data](#data)
+    * [Steps](#steps)
     * [SMPL to SMPL-X](#smpl-to-smpl-x)
     * [SMPL-X to SMPL](#smpl-x-to-smpl)
     * [SMPL+H to SMPL](#smpl%2Bh-to-smpl)
@@ -33,19 +34,19 @@ found [here](./docs/transfer.md).
 
 ## Requirements
 
-1. Start by cloning the SMPL-X repo:
+1. Install [mesh](https://github.com/MPI-IS/mesh)
+2. Start by cloning the SMPL-X repo:
 ```Shell 
 git clone https://github.com/vchoutas/smplx.git
 ```
-2. Run the following command to install all necessary requirements
+3. Run the following command to install all necessary requirements
 ```Shell
     pip install -r requirements.txt
 ```
-3. Install the Torch Trust Region optimizer by following the instructions [here](https://github.com/vchoutas/torch-trust-ncg) (rollback to compatible version such as `91ef87fd83085fc99415687089dee88d087dc16f`)
-4. Install loguru
-5. Install open3d
-6. Install omegaconf
-7. Install [mesh](https://github.com/MPI-IS/mesh)
+4. Install the Torch Trust Region optimizer by following the instructions [here](https://github.com/vchoutas/torch-trust-ncg) (rollback to compatible version such as `91ef87fd83085fc99415687089dee88d087dc16f`)
+5. Install loguru
+6. Install open3d
+7. Install omegaconf
 
 ## Using the code
 
@@ -71,6 +72,39 @@ transfer_data
 ├── smplx2smplh_deftrafo_setup.pkl
 ├── smplx_mask_ids.npy
 ```
+
+### Steps
+
+First, break the motion into a set of pose `.obj` files. Depending on how the
+SMPL-* parameters are stored this code will differ. For the example AMASS data
+in this repository you can use the example code here:
+
+```
+python write_obj.py --model-folder ../models/ --motion-file ../transfer_data/support_data/github_data/amass_sample.npz --output-folder ../transfer_data/meshes/amass_sample/
+```
+
+To run the `transfer_model` utility you will require a `.yaml` config file,
+which can point to the location the output `.obj` files have been saved. Use the
+templates in `config_files` in the root of this repository. To convert the
+sample AMASS code to SMPL-X:
+
+```
+python -m transfer_model --exp-cfg config_files/smplh2smplx_as.yaml
+```
+
+Finally, the output `.obj` files have to be merged into a single motion
+sequence. Example code to do this in a way that matches `SMPL-X` AMASS archives
+can be found in `merge_output.py` and run as follows:
+
+```
+python merge_output.py --gender neutral ../output
+```
+
+Debug notes describing common problems encountered during this can be found
+[here](https://github.com/gngdb/smplx/blob/debug/transfer_model/DEBUG_NOTES.md).
+Problems are also discussed in
+[two](https://github.com/vchoutas/smplx/issues/82)
+[issues](https://github.com/vchoutas/smplx/issues/75).
 
 ### SMPL to SMPL-X
 
