@@ -21,7 +21,7 @@ from typing import NewType, List, Dict
 import torch
 import torch.optim as optim
 from loguru import logger
-from torchtrustncg import TrustRegionNewtonCG
+from torchtrustncg import TrustRegion
 
 Tensor = NewType('Tensor', torch.Tensor)
 
@@ -46,7 +46,7 @@ def build_optimizer(parameters: List[Tensor],
         optimizer = optim.LBFGS(parameters, **optim_cfg.get('lbfgs', {}))
         create_graph = False
     elif optim_type == 'trust_ncg' or optim_type == 'trust-ncg':
-        optimizer = TrustRegionNewtonCG(
+        optimizer = TrustRegion(
             parameters, **optim_cfg.get('trust_ncg', {}))
         create_graph = True
     elif optim_type == 'rmsprop':
