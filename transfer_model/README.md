@@ -43,7 +43,7 @@ git clone https://github.com/vchoutas/smplx.git
 ```Shell
     pip install -r requirements.txt
 ```
-4. Install the Torch Trust Region optimizer by following the instructions [here](https://github.com/vchoutas/torch-trust-ncg) (rollback to compatible version such as `91ef87fd83085fc99415687089dee88d087dc16f`)
+4. Install the Torch Trust Region optimizer by following the instructions [here](https://github.com/vchoutas/torch-trust-ncg)
 5. Install loguru
 6. Install open3d
 7. Install omegaconf
