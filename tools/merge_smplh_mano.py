@@ -48,7 +48,6 @@ def merge_models(smplh_fn, mano_left_fn, mano_right_fn,
         rhand_data = pickle.load(rhand_file, encoding='latin1')
 
     out_fn = osp.split(smplh_fn)[1]
-    import ipdb; ipdb.set_trace()
     if out_fn.endswith('.npz'):
         out_fn = out_fn.replace('.npz', '.pkl')
         
