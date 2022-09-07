@@ -121,6 +121,7 @@ class SMPL(nn.Module):
                 will be selected
         '''
 
+        import ipdb; ipdb.set_trace()
         self.gender = gender
         self.age = age
 
@@ -140,10 +141,11 @@ class SMPL(nn.Module):
         super(SMPL, self).__init__()
         self.batch_size = batch_size
         shapedirs = data_struct.shapedirs
+        import ipdb; ipdb.set_trace()
         if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM):
             print(f'WARNING: You are using a {self.name()} model, with only'
-                  ' 10 shape coefficients.')
-            num_betas = min(num_betas, 10)
+                  f' {shapedirs.shape[-1]} shape coefficients.')
+            num_betas = min(num_betas, shapedirs.shape[-1])
         else:
             num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
 
@@ -513,6 +515,7 @@ class SMPLH(SMPL):
         right_hand_pose: Optional[Tensor] = None,
         use_pca: bool = True,
         num_pca_comps: int = 6,
+        num_betas = 16,
         flat_hand_mean: bool = False,
         batch_size: int = 1,
         gender: str = 'neutral',
@@ -591,6 +594,7 @@ class SMPLH(SMPL):
             model_path=model_path,
             kid_template_path=kid_template_path,
             data_struct=data_struct,
+            num_betas=num_betas,
             batch_size=batch_size, vertex_ids=vertex_ids, gender=gender, age=age,
             use_compressed=use_compressed, dtype=dtype, ext=ext, **kwargs)
 

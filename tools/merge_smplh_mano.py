@@ -29,16 +29,29 @@ import numpy as np
 def merge_models(smplh_fn, mano_left_fn, mano_right_fn,
                  output_folder='output'):
 
-    with open(smplh_fn, 'rb') as body_file:
-        body_data = pickle.load(body_file)
+    if smplh_fn.endswith('.pkl'):
+        with open(smplh_fn, 'rb') as body_file:
+            body_data = pickle.load(body_file, encoding='latin1')
+    elif smplh_fn.endswith('.npz'):
+        body_data_np = np.load(smplh_fn)
+        body_data = {}
+        for key in body_data_np:
+            body_data[key] = body_data_np[key]
+    else:
+        raise ValueError('The body model file should be either a .pkl or a .npz file.')
+        
 
     with open(mano_left_fn, 'rb') as lhand_file:
-        lhand_data = pickle.load(lhand_file)
+        lhand_data = pickle.load(lhand_file, encoding='latin1')
 
     with open(mano_right_fn, 'rb') as rhand_file:
-        rhand_data = pickle.load(rhand_file)
+        rhand_data = pickle.load(rhand_file, encoding='latin1')
 
     out_fn = osp.split(smplh_fn)[1]
+    import ipdb; ipdb.set_trace()
+    if out_fn.endswith('.npz'):
+        out_fn = out_fn.replace('.npz', '.pkl')
+        
 
     output_data = body_data.copy()
     output_data['hands_componentsl'] = lhand_data['hands_components']
@@ -50,7 +63,7 @@ def merge_models(smplh_fn, mano_left_fn, mano_right_fn,
     output_data['hands_meanl'] = lhand_data['hands_mean']
     output_data['hands_meanr'] = rhand_data['hands_mean']
 
-    for key, data in output_data.iteritems():
+    for key, data in output_data.items():
         if 'chumpy' in str(type(data)):
             output_data[key] = np.array(data)
         else:
