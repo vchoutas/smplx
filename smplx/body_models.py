@@ -141,7 +141,6 @@ class SMPL(nn.Module):
         super(SMPL, self).__init__()
         self.batch_size = batch_size
         shapedirs = data_struct.shapedirs
-        import ipdb; ipdb.set_trace()
         if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM):
             print(f'WARNING: You are using a {self.name()} model, with only'
                   f' {shapedirs.shape[-1]} shape coefficients.')
