@@ -71,7 +71,10 @@ class VertexJointSelector(nn.Module):
                              to_tensor(extra_joints_idxs, dtype=torch.long))
 
     def forward(self, vertices, joints):
-        extra_joints = torch.index_select(vertices, 1, self.extra_joints_idxs)
+        extra_joints = torch.index_select(vertices, 1, self.extra_joints_idxs.to(torch.long)) #The '.to(torch.long)'.
+                                                                                            # added to make the trace work in c++,
+                                                                                            # otherwise you get a runtime error in c++:
+                                                                                            # 'index_select(): Expected dtype int32 or int64 for index'
         joints = torch.cat([joints, extra_joints], dim=1)
 
         return joints
