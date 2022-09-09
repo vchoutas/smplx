@@ -18,3 +18,25 @@ python tools/merge_smplh_mano.py --smplh-fn SMPLH_FOLDER/SMPLH_GENDER.pkl \
 ```
 
 where SMPLH_FOLDER is the folder with the SMPL-H files and MANO_FOLDER the one for the MANO files.
+
+
+### SMPL-H version used in AMASS
+
+For AMASS, you should download the body with 16 betas, here is the process:
+
+```
+- Download the zip folder from "Models & Code" and extract it to get the folder `mano_v1_2`
+- Download the zip folder from "Extended SMPL+H model" and extract it to get the folder `smplh`
+
+$ git clone https://github.com/vchoutas/smplx.git
+$ cd smplx
+$ python tools/merge_smplh_mano.py \
+--smplh-fn /path/to/smplh/female/model.npz \
+--mano-left-fn /path/to/mano_v1_2/models/MANO_LEFT.pkl \
+--mano-right-fn /path/to/mano_v1_2/models/MANO_RIGHT.pkl \
+--output-folder /path/to/smplh/merged
+
+cp /path/to/smplh/merged/model.pkl /path/to/smplx_models/smplh/SMPLH_FEMALE.pkl
+```
+
+In the end you get the smplh model required by smplx 'smplx_models/smplh/SMPLH_FEMALE.pkl'
