@@ -44,6 +44,7 @@ TensorOutput = namedtuple('TensorOutput',
                           ['vertices', 'joints', 'betas', 'expression', 'global_orient', 'body_pose', 'left_hand_pose',
                            'right_hand_pose', 'jaw_pose', 'transl', 'full_pose'])
 
+
 class SMPL(nn.Module):
 
     NUM_JOINTS = 23
@@ -125,7 +126,6 @@ class SMPL(nn.Module):
                 will be selected
         '''
 
-        import ipdb; ipdb.set_trace()
         self.gender = gender
         self.age = age
 
@@ -154,11 +154,13 @@ class SMPL(nn.Module):
         else:
             num_betas = min(num_betas, self.SHAPE_SPACE_DIM)
 
-        if self.age=='kid':
+        if self.age == 'kid':
             v_template_smil = np.load(kid_template_path)
             v_template_smil -= np.mean(v_template_smil, axis=0)
-            v_template_diff = np.expand_dims(v_template_smil - data_struct.v_template, axis=2)
-            shapedirs = np.concatenate((shapedirs[:, :, :num_betas], v_template_diff), axis=2)
+            v_template_diff = np.expand_dims(
+                v_template_smil - data_struct.v_template, axis=2)
+            shapedirs = np.concatenate(
+                (shapedirs[:, :, :num_betas], v_template_diff), axis=2)
             num_betas = num_betas + 1
 
         self._num_betas = num_betas
@@ -520,7 +522,7 @@ class SMPLH(SMPL):
         right_hand_pose: Optional[Tensor] = None,
         use_pca: bool = True,
         num_pca_comps: int = 6,
-        num_betas = 16,
+        num_betas=16,
         flat_hand_mean: bool = False,
         batch_size: int = 1,
         gender: str = 'neutral',
@@ -1285,16 +1287,16 @@ class SMPLX(SMPLH):
         else:
             v_shaped = Tensor(0)
         output = TensorOutput(vertices=vertices if return_verts else None,
-                             joints=joints,
-                             betas=betas,
-                             expression=expression,
-                             global_orient=global_orient,
-                             body_pose=body_pose,
-                             left_hand_pose=left_hand_pose,
-                             right_hand_pose=right_hand_pose,
-                             jaw_pose=jaw_pose,
-                             v_shaped=v_shaped,
-                             full_pose=full_pose if return_full_pose else None)
+                              joints=joints,
+                              betas=betas,
+                              expression=expression,
+                              global_orient=global_orient,
+                              body_pose=body_pose,
+                              left_hand_pose=left_hand_pose,
+                              right_hand_pose=right_hand_pose,
+                              jaw_pose=jaw_pose,
+                              v_shaped=v_shaped,
+                              full_pose=full_pose if return_full_pose else None)
         return output
 
 
@@ -1484,16 +1486,16 @@ class SMPLXLayer(SMPLX):
             vertices += transl.unsqueeze(dim=1)
 
         output = TensorOutput(vertices=vertices if return_verts else Tensor(0),
-                             joints=joints,
-                             betas=betas,
-                             expression=expression,
-                             global_orient=global_orient,
-                             body_pose=body_pose,
-                             left_hand_pose=left_hand_pose,
-                             right_hand_pose=right_hand_pose,
-                             jaw_pose=jaw_pose,
-                             transl=transl if transl != None else Tensor(0),
-                             full_pose=full_pose if return_full_pose else Tensor(0))
+                              joints=joints,
+                              betas=betas,
+                              expression=expression,
+                              global_orient=global_orient,
+                              body_pose=body_pose,
+                              left_hand_pose=left_hand_pose,
+                              right_hand_pose=right_hand_pose,
+                              jaw_pose=jaw_pose,
+                              transl=transl if transl != None else Tensor(0),
+                              full_pose=full_pose if return_full_pose else Tensor(0))
 
         return output
 
