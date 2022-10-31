@@ -1235,6 +1235,7 @@ class SMPLX(SMPLH):
         scale = int(batch_size / betas.shape[0])
         if scale > 1:
             betas = betas.expand(scale, -1)
+            expression = expression.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
