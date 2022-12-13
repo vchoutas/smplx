@@ -40,6 +40,7 @@ def compute_face_landmarks(
     neck_kin_chain: Optional[Tensor] = None,
     pose2rot: bool = True,
 ) -> Tensor:
+
     batch_size = len(vertices)
     lmk_faces_idx = lmk_faces_idx.unsqueeze(dim=0).repeat(batch_size, 1)
     lmk_bary_coords = lmk_bary_coords.unsqueeze(dim=0).repeat(
@@ -294,20 +295,22 @@ def lbs(
         task_group_parents=task_group_parents,
     )
 
-    # 5. Do skinning:
-    # W is N x V x (J + 1)
-    W = lbs_weights.unsqueeze(dim=0).expand([batch_size, -1, -1])
-    # (N x V x (J + 1)) x (N x (J + 1) x 16)
-    num_joints = J_regressor.shape[0]
-    T = torch.matmul(W, rel_transforms.view(batch_size, num_joints, 16)).view(
-        batch_size, -1, 4, 4)
+    verts, T = None, None
+    if return_verts:
+        # 5. Do skinning:
+        # W is N x V x (J + 1)
+        W = lbs_weights.unsqueeze(dim=0).expand([batch_size, -1, -1])
+        # (N x V x (J + 1)) x (N x (J + 1) x 16)
+        num_joints = J_regressor.shape[0]
+        T = torch.matmul(W, rel_transforms.view(batch_size, num_joints, 16)).view(
+            batch_size, -1, 4, 4)
 
-    homogen_coord = torch.ones([batch_size, v_posed.shape[1], 1],
-                               dtype=dtype, device=device)
-    v_posed_homo = torch.cat([v_posed, homogen_coord], dim=2)
-    v_homo = torch.matmul(T, torch.unsqueeze(v_posed_homo, dim=-1))
+        homogen_coord = torch.ones([batch_size, v_posed.shape[1], 1],
+                                   dtype=dtype, device=device)
+        v_posed_homo = torch.cat([v_posed, homogen_coord], dim=2)
+        v_homo = torch.matmul(T, torch.unsqueeze(v_posed_homo, dim=-1))
 
-    verts = v_homo[:, :, :3, 0]
+        verts = v_homo[:, :, :3, 0]
 
     if transl is not None:
         # Update the translation for the
@@ -317,7 +320,8 @@ def lbs(
         abs_transforms = torch.einsum(
             'bmk,bjkn->bjmn', transl_transf, abs_transforms)
         # abs_transforms[..., :3, 3] += transl.unsqueeze(dim=1)
-        verts += transl.unsqueeze(dim=1)
+        if verts is not None:
+            verts += transl.unsqueeze(dim=1)
 
     return LBSOutput(
         _vertices=verts,
@@ -325,6 +329,7 @@ def lbs(
         _rel_joints_transforms=rel_transforms,
         _v_shaped=v_shaped,
         _v_rest_pose=v_posed,
+        _skinning_transforms=T,
     )
 
 
