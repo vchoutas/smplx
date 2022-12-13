@@ -244,4 +244,5 @@ JOINT_NAMES_DICT = {
     'smpl': SMPLH_JOINT_NAMES[:22] + ['left_hand', 'right_hand'],
     'smplh': SMPLH_JOINT_NAMES,
     'smplx': JOINT_NAMES,
+    'smpl-x': JOINT_NAMES,
 }
