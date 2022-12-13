@@ -129,7 +129,10 @@ class SMPLIndexed(SMPLLayer):
         v_posed = pose_offsets + v_shaped
         # 4. Get the global joint location
         joints, rel_transforms, abs_transforms = lbs.batch_rigid_transform(
-            rot_mats, joints_shaped, self.parents)
+            rot_mats, joints_shaped, self.parents,
+            parallel_exec=self.parallel_exec,
+            task_group_parents=self.task_group_parents,
+        )
 
         # 5. Do skinning:
         # W is N x V x (J + 1)
@@ -174,11 +177,15 @@ def main(
 
     device = torch.device('cuda')
 
+    # Optimize the kinematic tree traversal
+    optim_transform = True
+
     model = smplx.build_layer(
         model_folder, model_type=model_type,
         gender=gender, use_face_contour=use_face_contour,
         num_betas=num_betas,
         num_expression_coeffs=num_expression_coeffs,
+        optim_transform=optim_transform,
         ext=ext)
     model = model.to(device=device)
 
@@ -193,11 +200,11 @@ def main(
         gender=gender, use_face_contour=use_face_contour,
         num_betas=num_betas,
         num_expression_coeffs=num_expression_coeffs,
-        optim_transform=True,
         ext=ext,
         extra_joint_module_type='from_transforms',
         lmk_obj_type='from_transforms',
-        vertex_indices=vertex_indices
+        vertex_indices=vertex_indices,
+        optim_transform=optim_transform,
     ).to(device=device)
 
     betas, expression = None, None
@@ -215,7 +222,7 @@ def main(
 
     # body_pose[:, :, :, :] = torch.from_numpy(r.as_matrix())
 
-    N = 1000
+    N = 2000
 
     all_v2v = []
     timings = []
@@ -253,11 +260,10 @@ def main(
         #  logger.info(f'Vertex-to-vertex error: {v2v.item():.2f} mm')
         all_v2v.append(v2v)
 
-    logger.info(f'Vertex-to-vertex error: {np.mean(all_v2v):.2f} mm')
-
     logger.warning(f'Batch size: {batch_size}')
     logger.info(f'Baseline: {np.mean(timings) * 1000:.3f} (ms)')
     logger.info(f'Fast: {np.mean(fast_timings) * 1000:.3f} (ms)')
+    logger.info(f'Vertex-to-vertex error: {np.mean(all_v2v):.2f} mm')
 
     if show:
         ps.init()
