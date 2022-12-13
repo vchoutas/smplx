@@ -48,7 +48,7 @@ from .utils import (
     identity_rot_mats,
 )
 from .joint_names import JOINT_NAMES_DICT
-from .vertex_joint_selector import VertexJointSelector
+from .vertex_joint_selector import build_extra_joint_module, ExtraJointsModule
 
 
 def decode_pose_pca(
@@ -58,6 +58,21 @@ def decode_pose_pca(
     '''
 
     return torch.einsum('bi,ij->bj', [coefficients, components])
+
+
+def append_extra_joints(
+    module: ExtraJointsModule,
+    joints_transforms: Optional[Tensor] = None,
+    vertices: Optional[Tensor] = None,
+    skinning_transforms: Optional[Tensor] = None,
+) -> Tuple[Tensor, Tensor]:
+    extra_output = module(
+        vertices=vertices, joints_transforms=joints_transforms,
+        skinning_transforms=skinning_transforms,
+    )
+    joints = extra_output.joints
+    joints_transforms = extra_output.joints_transforms
+    return joints, joints_transforms
 
 
 def smpl_functional(
@@ -114,7 +129,7 @@ class SMPL(nn.Module):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = None,
         kid_template_path: str = '',
         data_struct: Optional[Struct] = None,
         create_betas: bool = True,
@@ -134,6 +149,7 @@ class SMPL(nn.Module):
         vertex_ids: Dict[str, int] = None,
         v_template: Optional[Union[Tensor, Array]] = None,
         optim_transform: bool = False,
+        extra_joint_module_type: str = 'from_vertices',
         **kwargs
     ) -> None:
         ''' SMPL model constructor
@@ -227,9 +243,9 @@ class SMPL(nn.Module):
 
         self._num_betas = num_betas
         shapedirs = shapedirs[:, :, :num_betas]
+        shapedirs_tensor = to_tensor(to_np(shapedirs), dtype=dtype)
         # The shape components
-        self.register_buffer(
-            'shapedirs', to_tensor(to_np(shapedirs), dtype=dtype))
+        self.register_buffer('shapedirs', shapedirs_tensor)
 
         if vertex_ids is None:
             # SMPL and SMPL-H share the same topology, so any extra joints can
@@ -239,9 +255,6 @@ class SMPL(nn.Module):
         self.dtype = dtype
 
         self.joint_mapper = joint_mapper
-
-        self.vertex_joint_selector = VertexJointSelector(
-            vertex_ids=vertex_ids, **kwargs)
 
         self.faces = to_np(data_struct.f, dtype=np.int64)
         faces_tensor = to_tensor(self.faces, dtype=torch.long)
@@ -313,6 +326,13 @@ class SMPL(nn.Module):
             data_struct.J_regressor), dtype=dtype)
         self.register_buffer('J_regressor', j_regressor)
 
+        # self.register_buffer('j_template', j_regressor @ v_template)
+
+        # j_shapedirs = torch.einsum(
+        #     'jv,vmb->jmb', j_regressor, self.shapedirs)
+
+        # self.register_buffer('j_shapedirs', j_shapedirs)
+
         # Pose blend shape basis: 6890 x 3 x 207, reshaped to 6890*3 x 207
         num_pose_basis = data_struct.posedirs.shape[-1]
         # 9*J x 20670
@@ -335,6 +355,17 @@ class SMPL(nn.Module):
         lbs_weights = to_tensor(to_np(data_struct.weights), dtype=dtype)
         self.register_buffer('lbs_weights', lbs_weights)
 
+        joints_template = self.J_regressor @ self.v_template
+
+        self.vertex_joint_selector = build_extra_joint_module(
+            type=extra_joint_module_type,
+            vertex_ids=vertex_ids,
+            joints_template=joints_template,
+            skinning_weights=self.lbs_weights,
+            v_template=self.v_template,
+            use_hands=kwargs.get('use_hands', True),
+            use_feet=kwargs.get('use_feet', True))
+
     @property
     def num_betas(self):
         return self._num_betas
@@ -352,11 +383,13 @@ class SMPL(nn.Module):
         num_joints = self.num_skeleton_joints
         if hasattr(self, 'vertex_joint_selector'):
             num_joints += self.vertex_joint_selector.num_joints
+        if hasattr(self, 'landmark_object'):
+            num_joints += self.landmark_object.num_landmarks
         return num_joints
 
     @property
     def joint_names(self) -> List[str]:
-        return JOINT_NAMES_DICT[self.name]
+        return JOINT_NAMES_DICT[self.name.lower()]
 
     @property
     def num_skeleton_joints(self) -> int:
@@ -415,6 +448,16 @@ class SMPL(nn.Module):
             joints_transforms = self.joint_mapper(joints_transforms)
 
         return joints, joints_transforms
+
+    def forward_joints(
+        self,
+        betas: Optional[Tensor] = None,
+        body_pose: Optional[Tensor] = None,
+        global_orient: Optional[Tensor] = None,
+        transl: Optional[Tensor] = None,
+    ):
+        joints = self.j_template + blend_shapes(betas, self.j_shapedirs)
+        pass
 
     def forward_shape(
         self,
@@ -493,8 +536,16 @@ class SMPL(nn.Module):
             task_group_parents=self.task_group_parents,
         )
 
+        vertices = lbs_output.vertices
         joints = lbs_output.joints
         joints_transforms = lbs_output.joints_transforms
+
+        # Add any extra joints that might be needed
+        joints, joints_transforms = append_extra_joints(
+            self.vertex_joint_selector, vertices=vertices,
+            joints_transforms=joints_transforms,
+            skinning_transforms=lbs_output.skinning_transforms,
+        )
 
         # Map the joints and their rigid transformations to the new joint order
         joints, joints_transforms = self.remap_joints(
@@ -750,6 +801,13 @@ class SMPLH(SMPL):
             self.register_buffer(
                 'right_hand_components',
                 torch.tensor(right_hand_components, dtype=dtype))
+
+            self.register_buffer(
+                'left_hand_full_components',
+                torch.tensor(data_struct.hands_componentsl, dtype=dtype))
+            self.register_buffer(
+                'right_hand_full_components',
+                torch.tensor(data_struct.hands_componentsr, dtype=dtype))
 
         if self.flat_hand_mean:
             left_hand_mean = np.zeros_like(data_struct.hands_meanl)
@@ -1024,7 +1082,10 @@ class SMPLHLayer(SMPLH):
         joints_transforms = lbs_output.joints_transforms
 
         # Add any extra joints that might be needed
-        joints = self.vertex_joint_selector(vertices, joints)
+        joints, joints_transforms = append_extra_joints(
+            self.vertex_joint_selector, vertices=vertices, joints_transforms=joints_transforms,
+            skinning_transforms=lbs_output.skinning_transforms,
+        )
 
         # Map the joints and their rigid transformations to the new joint order
         joints, joints_transforms = self.remap_joints(
@@ -1222,9 +1283,12 @@ class SMPLX(SMPLH):
         blendshapes = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
         self.register_buffer('blendshapes', blendshapes)
 
+        self.use_face_contour = use_face_contour
         self.landmark_object = build_landmark_object(
             data_struct, use_face_contour=use_face_contour,
-            neck_index=self.NECK_IDX, blendshapes=blendshapes, type=lmk_obj_type,
+            neck_index=self.NECK_IDX,
+            blendshapes=blendshapes,
+            type=lmk_obj_type,
         )
 
     @property
@@ -1395,7 +1459,10 @@ class SMPLX(SMPLH):
             transl=transl, faces_tensor=self.faces_tensor, pose2rot=False)
 
         # Add any extra joints that might be needed
-        joints = self.vertex_joint_selector(vertices, joints)
+        joints, joints_transforms = append_extra_joints(
+            self.vertex_joint_selector, vertices=vertices, joints_transforms=joints_transforms,
+            skinning_transforms=lbs_output.skinning_transforms,
+        )
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 
@@ -1415,6 +1482,7 @@ class SMPLX(SMPLH):
                              v_shaped=lbs_output.v_shaped,
                              full_pose=full_pose,
                              transl=transl,
+                             faces=self.faces,
                              )
         return output
 
@@ -1581,13 +1649,18 @@ class SMPLXLayer(SMPLX):
         rel_joints_transforms = lbs_output.rel_joints_transforms
 
         landmarks = self.landmark_object(
-            vertices=vertices, full_pose=full_pose,
+            vertices=vertices,
+            full_pose=full_pose,
             joints_transforms=rel_joints_transforms,
             blendshape_coefficients=blendshape_coefficients,
             transl=transl, faces_tensor=self.faces_tensor, pose2rot=False)
 
         # Add any extra joints that might be needed
-        joints = self.vertex_joint_selector(vertices, joints)
+        joints, joints_transforms = append_extra_joints(
+            self.vertex_joint_selector, vertices=vertices, joints_transforms=joints_transforms,
+            skinning_transforms=lbs_output.skinning_transforms,
+        )
+
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 
@@ -1607,6 +1680,8 @@ class SMPLXLayer(SMPLX):
                              jaw_pose=jaw_pose,
                              transl=transl,
                              full_pose=full_pose,
+                             faces=self.faces,
+                             v_shaped=lbs_output.v_shaped,
                              )
         return output
 
@@ -1915,7 +1990,7 @@ class FLAME(SMPL):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = None,
         data_struct=None,
         num_expression_coeffs=10,
         create_expression: bool = True,
@@ -2287,6 +2362,7 @@ class FLAMELayer(FLAME):
         return_verts: bool = True,
         return_full_pose: bool = False,
         pose2rot: bool = True,
+        vertex_ids: Optional[Tensor] = None,
         **kwargs
     ) -> FLAMEOutput:
         '''
@@ -2358,8 +2434,14 @@ class FLAMELayer(FLAME):
         blendshape_coefficients = torch.cat([betas, expression], dim=-1)
         # shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
+        v_template = self.v_template
+        if vertex_ids is not None:
+            v_template = self.v_template[vertex_ids]
+            blendshapes = self.blendshapes[vertex_ids]
+            posedirs = self.posedirs[vertex_ids]
+
         lbs_output = smpl_functional(
-            self.v_template,
+            v_template,
             self.blendshapes, self.posedirs, self.J_regressor,
             self.parents, self.lbs_weights,
             full_pose=full_pose,
@@ -2382,7 +2464,12 @@ class FLAMELayer(FLAME):
             transl=transl, faces_tensor=self.faces_tensor, pose2rot=False)
 
         # Add any extra joints that might be needed
-        joints = self.vertex_joint_selector(vertices, joints)
+        joints, joints_transforms = append_extra_joints(
+            self.vertex_joint_selector, vertices=vertices,
+            joints_transforms=joints_transforms,
+            skinning_transforms=lbs_output.skinning_transforms,
+        )
+
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 
