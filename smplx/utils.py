@@ -34,6 +34,11 @@ class LBSOutput:
     _v_shaped: Optional[Tensor] = None
     _v_rest_pose: Optional[Tensor] = None
     _skinning_transforms: Optional[Tensor] = None
+    _faces: Optional[Array] = None
+
+    @property
+    def faces(self) -> Tensor:
+        return self._faces
 
     @property
     def skinning_transforms(self) -> Tensor:
@@ -78,6 +83,7 @@ class ModelOutput:
     transl: Optional[Tensor] = None
     v_shaped: Optional[Tensor] = None
     v_rest_pose: Optional[Tensor] = None
+    faces: Optional[Array] = None
 
     @classmethod
     def from_lbs_output(cls, lbs_output: LBSOutput, **kwargs) -> ModelOutput:
@@ -244,4 +250,4 @@ def identity_rot_mats(
 ) -> Tensor:
     targs = {'dtype': dtype, 'device': device}
     return torch.eye(3, **targs).view(
-        1, 1, 3, 3).repeat(batch_size, num_matrices, -1, -1)
+        1, 1, 3, 3).repeat(batch_size, num_matrices, 1, 1)
