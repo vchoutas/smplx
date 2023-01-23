@@ -1136,7 +1136,7 @@ class SMPLX(SMPLH):
         pose2rot: bool = True,
         return_shaped: bool = True,
         **kwargs
-    ) -> TensorOutput:
+    ) -> SMPLXOutput:
         '''
         Forward pass for the SMPLX model
 
@@ -1286,7 +1286,7 @@ class SMPLX(SMPLH):
             v_shaped = self.v_template + blend_shapes(betas, self.shapedirs)
         else:
             v_shaped = Tensor(0)
-        output = TensorOutput(vertices=vertices if return_verts else None,
+        output = SMPLXOutput(vertices=vertices if return_verts else None,
                               joints=joints,
                               betas=betas,
                               expression=expression,
