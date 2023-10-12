@@ -259,7 +259,7 @@ def run_fitting(
     batch: Dict[str, Tensor],
     body_model: nn.Module,
     def_matrix: Tensor,
-    mask_ids: Optional = None
+    mask_ids: Optional[Tensor] = None
 ) -> Dict[str, Tensor]:
     ''' Runs fitting
     '''
