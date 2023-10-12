@@ -1292,6 +1292,7 @@ class SMPLX(SMPLH):
                               betas=betas,
                               expression=expression,
                               global_orient=global_orient,
+                              transl=transl,
                               body_pose=body_pose,
                               left_hand_pose=left_hand_pose,
                               right_hand_pose=right_hand_pose,
