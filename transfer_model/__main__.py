@@ -87,11 +87,11 @@ def main() -> None:
 
         for ii, path in enumerate(paths):
             _, fname = osp.split(path)
-
-            output_path = osp.join(
-                output_folder, f'{osp.splitext(fname)[0]}.pkl')
-            with open(output_path, 'wb') as f:
-                pickle.dump(var_dict, f)
+            if ii == 0:
+                output_path = osp.join(
+                    output_folder, f'{osp.splitext(fname)[0]}.pkl')
+                with open(output_path, 'wb') as f:
+                    pickle.dump(var_dict, f)
 
             output_path = osp.join(
                 output_folder, f'{osp.splitext(fname)[0]}.obj')
