@@ -342,8 +342,8 @@ def run_fitting(
                  interactive=interactive,
                  **optim_cfg)
 
-    if 'translation' in var_dict:
-        optimizer_dict = build_optimizer([var_dict['translation']], optim_cfg)
+    if 'transl' in var_dict:
+        optimizer_dict = build_optimizer([var_dict['transl']], optim_cfg)
         closure = build_vertex_closure(
             body_model, var_dict,
             optimizer_dict,
@@ -351,12 +351,12 @@ def run_fitting(
             vertex_loss=vertex_loss,
             mask_ids=mask_ids,
             per_part=False,
-            params_to_opt=[var_dict['translation']],
+            params_to_opt=[var_dict['transl']],
         )
         # Optimize translation
         minimize(optimizer_dict['optimizer'],
                  closure,
-                 params=[var_dict['translation']],
+                 params=[var_dict['transl']],
                  summary_closure=log_closure,
                  summary_steps=summary_steps,
                  interactive=interactive,

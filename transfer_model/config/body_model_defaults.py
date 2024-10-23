@@ -89,7 +89,7 @@ class BodyModelConfig:
     folder: str = 'models'
     gender: str = 'neutral'
     extra_joint_path: str = ''
-    ext: str = 'npz'
+    ext: str = 'pkl'
 
     num_expression_coeffs: int = 10
 
