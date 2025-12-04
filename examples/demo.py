@@ -24,6 +24,179 @@ import torch
 import smplx
 
 
+def load_smpl_file(file_path):
+    """
+    Load .smpl file (which is actually .npz format with specific keys)
+    Returns a dictionary with SMPL-X compatible parameters
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the .smpl file
+
+    Returns
+    -------
+    dict
+        Dictionary containing SMPL-X compatible parameters:
+        - betas: torch.Tensor, shape [1, num_betas]
+        - body_pose: torch.Tensor, shape [1, 21, 3] or None
+        - global_orient: torch.Tensor, shape [1, 3] or None
+        - left_hand_pose: torch.Tensor or None
+        - right_hand_pose: torch.Tensor or None
+        - transl: torch.Tensor, shape [1, 3] or None
+        - gender: str
+    """
+    data = np.load(file_path, allow_pickle=True)
+
+    params = {}
+
+    # Shape parameters (betas)
+    if 'shapeParameters' in data:
+        betas = torch.from_numpy(data['shapeParameters']).float()
+        if len(betas.shape) == 1:
+            betas = betas.unsqueeze(0)  # Add batch dimension
+        params['betas'] = betas
+
+    # Body pose (22 joints - need to convert to 21 for SMPL-X)
+    if 'bodyPose' in data:
+        body_pose = torch.from_numpy(data['bodyPose']).float()  # (1, 22, 3)
+        # SMPL-X expects 21 body joints (excluding root)
+        # The first joint in bodyPose might be root, so we take joints 1-21
+        if body_pose.shape[1] == 22:
+            # Skip first, take next 21
+            params['body_pose'] = body_pose[:, 1:22, :]
+        elif body_pose.shape[1] == 21:
+            params['body_pose'] = body_pose
+        else:
+            # Reshape if needed: (1, 63) -> (1, 21, 3)
+            if len(body_pose.shape) == 2 and body_pose.shape[1] == 63:
+                params['body_pose'] = body_pose.reshape(1, 21, 3)
+            else:
+                params['body_pose'] = body_pose
+
+    # Head pose - extract global orientation
+    # headPose is (1, 3, 3) rotation matrices, we need axis-angle
+    if 'headPose' in data:
+        head_pose = torch.from_numpy(data['headPose']).float()  # (1, 3, 3)
+        # Convert rotation matrix to axis-angle
+        # Using Rodrigues' formula for conversion
+        if head_pose.shape[1] == 3 and head_pose.shape[2] == 3:
+            # Extract first rotation matrix as global_orient
+            # head_pose[0] gives us the (3, 3) rotation matrix
+            R = head_pose[0]  # First rotation matrix (3x3)
+            # Convert rotation matrix to axis-angle using Rodrigues' formula
+            trace = R[0, 0] + R[1, 1] + R[2, 2]
+            angle = torch.acos(torch.clamp((trace - 1) / 2, -1, 1))
+            if angle < 1e-6:
+                # No rotation
+                params['global_orient'] = torch.zeros(
+                    1, 3, dtype=torch.float32)
+            else:
+                # Extract axis
+                axis = torch.stack([
+                    R[2, 1] - R[1, 2],
+                    R[0, 2] - R[2, 0],
+                    R[1, 0] - R[0, 1]
+                ]) / (2 * torch.sin(angle))
+                params['global_orient'] = (angle * axis).unsqueeze(0)
+
+    # Hand poses
+    if 'leftHandPose' in data:
+        left_hand = torch.from_numpy(data['leftHandPose']).float()
+        if len(left_hand.shape) == 3:  # (1, 15, 3)
+            # Flatten to (1, 45) for PCA or keep as (1, 15, 3) for axis-angle
+            params['left_hand_pose'] = left_hand.reshape(1, -1)
+        else:
+            params['left_hand_pose'] = left_hand
+
+    if 'rightHandPose' in data:
+        right_hand = torch.from_numpy(data['rightHandPose']).float()
+        if len(right_hand.shape) == 3:  # (1, 15, 3)
+            params['right_hand_pose'] = right_hand.reshape(1, -1)
+        else:
+            params['right_hand_pose'] = right_hand
+
+    # Translation
+    if 'bodyTranslation' in data:
+        params['transl'] = torch.from_numpy(data['bodyTranslation']).float()
+
+    # Gender mapping
+    if 'gender' in data:
+        gender_val = int(data['gender'])
+        # Common mapping: 0=neutral, 1=male, 2=female (may vary)
+        gender_map = {0: 'neutral', 1: 'male', 2: 'female', -1: 'male'}
+        params['gender'] = gender_map.get(gender_val, 'neutral')
+    else:
+        params['gender'] = 'neutral'
+
+    return params
+
+
+def modify_body_attributes(betas, body_fat=None, lean_mass_arms=None,
+                           lean_mass_torso=None, lean_mass_legs=None):
+    """
+    Modify body attributes by adjusting beta values.
+
+    NOTE: These mappings are EXPERIMENTAL and may need adjustment.
+    The exact beta indices that control these attributes may vary.
+
+    Parameters
+    ----------
+    betas : torch.Tensor
+        Shape parameters tensor [1, num_betas]
+    body_fat : float, optional
+        Body fat percentage modifier (-1.0 to 1.0 range)
+    lean_mass_arms : float, optional
+        Arms lean mass modifier
+    lean_mass_torso : float, optional
+        Torso lean mass modifier
+    lean_mass_legs : float, optional
+        Legs lean mass modifier
+
+    Returns
+    -------
+    torch.Tensor
+        Modified betas tensor
+    """
+    # Create a copy to avoid modifying the original
+    modified_betas = betas.clone()
+
+    # Body Fat %: Typically affects overall weight/thickness
+    # Experimental: betas[0] and betas[1] often control weight/thickness
+    if body_fat is not None:
+        # Positive values = more body fat, negative = less body fat
+        modified_betas[0, 0] += body_fat * 0.5  # Primary weight parameter
+        if modified_betas.shape[1] > 1:
+            modified_betas[0, 1] += body_fat * \
+                0.3  # Secondary weight parameter
+
+    # Lean Mass Arms: Experimental - may affect arm muscle mass
+    # Try betas[2] or betas[3] for arm-related shape
+    if lean_mass_arms is not None:
+        if modified_betas.shape[1] > 2:
+            modified_betas[0, 2] += lean_mass_arms * 0.4
+        if modified_betas.shape[1] > 3:
+            modified_betas[0, 3] += lean_mass_arms * 0.2
+
+    # Lean Mass Torso: Experimental - may affect torso muscle mass
+    # Try betas[4] or betas[5] for torso-related shape
+    if lean_mass_torso is not None:
+        if modified_betas.shape[1] > 4:
+            modified_betas[0, 4] += lean_mass_torso * 0.4
+        if modified_betas.shape[1] > 5:
+            modified_betas[0, 5] += lean_mass_torso * 0.2
+
+    # Lean Mass Legs: Experimental - may affect leg muscle mass
+    # Try betas[6] or betas[7] for leg-related shape
+    if lean_mass_legs is not None:
+        if modified_betas.shape[1] > 6:
+            modified_betas[0, 6] += lean_mass_legs * 0.4
+        if modified_betas.shape[1] > 7:
+            modified_betas[0, 7] += lean_mass_legs * 0.2
+
+    return modified_betas
+
+
 def main(model_folder,
          model_type='smplx',
          ext='npz',
@@ -35,7 +208,23 @@ def main(model_folder,
          num_expression_coeffs=10,
          plotting_module='pyrender',
          use_face_contour=False,
-         output_path=None):
+         output_path=None,
+         params_file=None,
+         body_fat=None,
+         lean_mass_arms=None,
+         lean_mass_torso=None,
+         lean_mass_legs=None):
+
+    # Load parameters from .smpl file if provided
+    loaded_params = {}
+    if params_file and osp.exists(params_file):
+        print(f'Loading parameters from: {params_file}')
+        loaded_params = load_smpl_file(params_file)
+
+        # Override gender if specified in file
+        if 'gender' in loaded_params:
+            gender = loaded_params['gender']
+            print(f'Gender from file: {gender}')
 
     model = smplx.create(model_folder, model_type=model_type,
                          gender=gender, use_face_contour=use_face_contour,
@@ -44,24 +233,89 @@ def main(model_folder,
                          ext=ext)
     print(model)
 
+    # Initialize parameters
     betas, expression = None, None
-    if sample_shape:
-        betas = torch.zeros([1, model.num_betas], dtype=torch.float32)
-    if sample_expression:
-        expression = torch.randn(
-            [1, model.num_expression_coeffs], dtype=torch.float32)
+    body_pose = None
+    global_orient = None
+    left_hand_pose = None
+    right_hand_pose = None
+    transl = None
 
-    # # Height/tallness (positive = taller, negative = shorter)
-    betas[0, 0] = 3
-    # # Weight/thinness (positive = heavier, negative = thinner)
-    # betas[0, 1] = 0.0
-    # betas[0, 2] = 0.0   # Body proportions
-    # betas[0, 3] = 0.0   # Additional shape variation
-    # betas[0, 4] = 0.0   # Additional shape variation
-    # # ... continue for all 10 betas (or however many num_betas is)
+    # Load from file if provided
+    if loaded_params:
+        betas = loaded_params.get('betas')
+        body_pose = loaded_params.get('body_pose')
+        global_orient = loaded_params.get('global_orient')
+        transl = loaded_params.get('transl')
 
-    output = model(betas=betas, expression=expression,
-                   return_verts=True)
+        # Handle hand poses - check if model uses PCA
+        # If model uses PCA and we have axis-angle format, skip hand poses
+        # (converting axis-angle to PCA requires inverse transformation)
+        loaded_left_hand = loaded_params.get('left_hand_pose')
+        loaded_right_hand = loaded_params.get('right_hand_pose')
+
+        if hasattr(model, 'use_pca') and model.use_pca:
+            # Model expects PCA coefficients (typically 6 values), but we have axis-angle (45 values)
+            # Skip hand poses and let model use defaults
+            expected_pca_size = getattr(model, 'num_pca_comps', 6)
+            if loaded_left_hand is not None and loaded_left_hand.shape[1] != expected_pca_size:
+                print(f'Warning: Model uses PCA for hands ({expected_pca_size} components), '
+                      f'but loaded hand poses are axis-angle format ({loaded_left_hand.shape[1]} values). '
+                      f'Skipping hand poses.')
+                left_hand_pose = None
+                right_hand_pose = None
+            else:
+                left_hand_pose = loaded_left_hand
+                right_hand_pose = loaded_right_hand
+        else:
+            # Model doesn't use PCA, can use axis-angle directly
+            left_hand_pose = loaded_left_hand
+            right_hand_pose = loaded_right_hand
+
+        print(f'Loaded: betas={betas is not None}, body_pose={body_pose is not None}, '
+              f'global_orient={global_orient is not None}, '
+              f'left_hand_pose={left_hand_pose is not None}, '
+              f'right_hand_pose={right_hand_pose is not None}')
+
+    # If no file loaded, use defaults
+    if betas is None:
+        if sample_shape:
+            betas = torch.zeros([1, model.num_betas], dtype=torch.float32)
+        else:
+            betas = torch.zeros([1, model.num_betas], dtype=torch.float32)
+
+    if expression is None:
+        if sample_expression:
+            expression = torch.randn(
+                [1, model.num_expression_coeffs], dtype=torch.float32)
+        else:
+            expression = torch.zeros(
+                [1, model.num_expression_coeffs], dtype=torch.float32)
+
+    # Apply body modifications if specified
+    if body_fat is not None or lean_mass_arms is not None or \
+       lean_mass_torso is not None or lean_mass_legs is not None:
+        print('Applying body modifications...')
+        betas = modify_body_attributes(
+            betas,
+            body_fat=body_fat,
+            lean_mass_arms=lean_mass_arms,
+            lean_mass_torso=lean_mass_torso,
+            lean_mass_legs=lean_mass_legs
+        )
+        print(f'Modified betas: {betas[0, :min(8, betas.shape[1])].tolist()}')
+
+    # Generate mesh with all parameters
+    output = model(
+        betas=betas,
+        expression=expression,
+        body_pose=body_pose,
+        global_orient=global_orient,
+        left_hand_pose=left_hand_pose,
+        right_hand_pose=right_hand_pose,
+        transl=transl,
+        return_verts=True
+    )
     vertices = output.vertices.detach().cpu().numpy().squeeze()
     joints = output.joints.detach().cpu().numpy().squeeze()
 
@@ -189,6 +443,16 @@ if __name__ == '__main__':
                         help='Compute the contour of the face')
     parser.add_argument('--output', type=str, default=None,
                         help='Output path for .glb file (e.g., model.glb)')
+    parser.add_argument('--params-file', type=str, default=None,
+                        help='Path to .smpl parameter file to load and edit')
+    parser.add_argument('--body-fat', type=float, default=None,
+                        help='Body fat percentage modifier (-1.0 to 1.0 range, experimental)')
+    parser.add_argument('--lean-mass-arms', type=float, default=None,
+                        help='Arms lean mass modifier (experimental)')
+    parser.add_argument('--lean-mass-torso', type=float, default=None,
+                        help='Torso lean mass modifier (experimental)')
+    parser.add_argument('--lean-mass-legs', type=float, default=None,
+                        help='Legs lean mass modifier (experimental)')
 
     args = parser.parse_args()
 
@@ -204,6 +468,11 @@ if __name__ == '__main__':
     sample_shape = args.sample_shape
     sample_expression = args.sample_expression
     output_path = args.output
+    params_file = args.params_file
+    body_fat = args.body_fat
+    lean_mass_arms = args.lean_mass_arms
+    lean_mass_torso = args.lean_mass_torso
+    lean_mass_legs = args.lean_mass_legs
 
     main(model_folder, model_type, ext=ext,
          gender=gender, plot_joints=plot_joints,
@@ -213,7 +482,12 @@ if __name__ == '__main__':
          sample_expression=sample_expression,
          plotting_module=plotting_module,
          use_face_contour=use_face_contour,
-         output_path=output_path)
+         output_path=output_path,
+         params_file=params_file,
+         body_fat=body_fat,
+         lean_mass_arms=lean_mass_arms,
+         lean_mass_torso=lean_mass_torso,
+         lean_mass_legs=lean_mass_legs)
 
 
 # paste this to run the script
