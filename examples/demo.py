@@ -14,6 +14,7 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
+import os
 import os.path as osp
 import argparse
 
@@ -29,11 +30,12 @@ def main(model_folder,
          gender='neutral',
          plot_joints=False,
          num_betas=10,
-         sample_shape=True,
+         sample_shape=False,
          sample_expression=True,
          num_expression_coeffs=10,
          plotting_module='pyrender',
-         use_face_contour=False):
+         use_face_contour=False,
+         output_path=None):
 
     model = smplx.create(model_folder, model_type=model_type,
                          gender=gender, use_face_contour=use_face_contour,
@@ -44,10 +46,19 @@ def main(model_folder,
 
     betas, expression = None, None
     if sample_shape:
-        betas = torch.randn([1, model.num_betas], dtype=torch.float32)
+        betas = torch.zeros([1, model.num_betas], dtype=torch.float32)
     if sample_expression:
         expression = torch.randn(
             [1, model.num_expression_coeffs], dtype=torch.float32)
+
+    # # Height/tallness (positive = taller, negative = shorter)
+    betas[0, 0] = 3
+    # # Weight/thinness (positive = heavier, negative = thinner)
+    # betas[0, 1] = 0.0
+    # betas[0, 2] = 0.0   # Body proportions
+    # betas[0, 3] = 0.0   # Additional shape variation
+    # betas[0, 4] = 0.0   # Additional shape variation
+    # # ... continue for all 10 betas (or however many num_betas is)
 
     output = model(betas=betas, expression=expression,
                    return_verts=True)
@@ -57,66 +68,87 @@ def main(model_folder,
     print('Vertices shape =', vertices.shape)
     print('Joints shape =', joints.shape)
 
-    if plotting_module == 'pyrender':
-        import pyrender
-        import trimesh
-        vertex_colors = np.ones([vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 0.8]
-        tri_mesh = trimesh.Trimesh(vertices, model.faces,
-                                   vertex_colors=vertex_colors)
+    # Create trimesh object for export
+    import trimesh
+    vertex_colors = np.ones([vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 0.8]
+    tri_mesh = trimesh.Trimesh(vertices, model.faces,
+                               vertex_colors=vertex_colors)
 
-        mesh = pyrender.Mesh.from_trimesh(tri_mesh)
+    # Export to .glb if output path is specified
+    if output_path:
+        # Create exported_models directory if it doesn't exist
+        export_dir = 'exported_models'
+        os.makedirs(export_dir, exist_ok=True)
 
-        scene = pyrender.Scene()
-        scene.add(mesh)
+        # Get just the filename from the output path
+        filename = osp.basename(output_path)
+        # If no extension, add .glb
+        if not filename.endswith('.glb'):
+            filename = filename + '.glb' if '.' not in filename else filename
 
-        if plot_joints:
-            sm = trimesh.creation.uv_sphere(radius=0.005)
-            sm.visual.vertex_colors = [0.9, 0.1, 0.1, 1.0]
-            tfs = np.tile(np.eye(4), (len(joints), 1, 1))
-            tfs[:, :3, 3] = joints
-            joints_pcl = pyrender.Mesh.from_trimesh(sm, poses=tfs)
-            scene.add(joints_pcl)
+        # Save to exported_models folder
+        full_output_path = osp.join(export_dir, filename)
+        tri_mesh.export(full_output_path)
+        print(f'Model exported to: {full_output_path}')
 
-        pyrender.Viewer(scene, use_raymond_lighting=True)
-    elif plotting_module == 'matplotlib':
-        from matplotlib import pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+    # Visualization (optional, skip if output only and no plotting module specified)
+    if plotting_module and plotting_module != 'none':
+        if plotting_module == 'pyrender':
+            import pyrender
+            mesh = pyrender.Mesh.from_trimesh(tri_mesh)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+            scene = pyrender.Scene()
+            scene.add(mesh)
 
-        mesh = Poly3DCollection(vertices[model.faces], alpha=0.1)
-        face_color = (1.0, 1.0, 0.9)
-        edge_color = (0, 0, 0)
-        mesh.set_edgecolor(edge_color)
-        mesh.set_facecolor(face_color)
-        ax.add_collection3d(mesh)
-        ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], color='r')
+            if plot_joints:
+                sm = trimesh.creation.uv_sphere(radius=0.005)
+                sm.visual.vertex_colors = [0.9, 0.1, 0.1, 1.0]
+                tfs = np.tile(np.eye(4), (len(joints), 1, 1))
+                tfs[:, :3, 3] = joints
+                joints_pcl = pyrender.Mesh.from_trimesh(sm, poses=tfs)
+                scene.add(joints_pcl)
 
-        if plot_joints:
-            ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], alpha=0.1)
-        plt.show()
-    elif plotting_module == 'open3d':
-        import open3d as o3d
+            pyrender.Viewer(scene, use_raymond_lighting=True)
+        elif plotting_module == 'matplotlib':
+            from matplotlib import pyplot as plt
+            from mpl_toolkits.mplot3d import Axes3D
+            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-        mesh = o3d.geometry.TriangleMesh()
-        mesh.vertices = o3d.utility.Vector3dVector(
-            vertices)
-        mesh.triangles = o3d.utility.Vector3iVector(model.faces)
-        mesh.compute_vertex_normals()
-        mesh.paint_uniform_color([0.3, 0.3, 0.3])
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
 
-        geometry = [mesh]
-        if plot_joints:
-            joints_pcl = o3d.geometry.PointCloud()
-            joints_pcl.points = o3d.utility.Vector3dVector(joints)
-            joints_pcl.paint_uniform_color([0.7, 0.3, 0.3])
-            geometry.append(joints_pcl)
+            mesh = Poly3DCollection(vertices[model.faces], alpha=0.1)
+            face_color = (1.0, 1.0, 0.9)
+            edge_color = (0, 0, 0)
+            mesh.set_edgecolor(edge_color)
+            mesh.set_facecolor(face_color)
+            ax.add_collection3d(mesh)
+            ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], color='r')
 
-        o3d.visualization.draw_geometries(geometry)
-    else:
-        raise ValueError('Unknown plotting_module: {}'.format(plotting_module))
+            if plot_joints:
+                ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], alpha=0.1)
+            plt.show()
+        elif plotting_module == 'open3d':
+            import open3d as o3d
+
+            mesh = o3d.geometry.TriangleMesh()
+            mesh.vertices = o3d.utility.Vector3dVector(
+                vertices)
+            mesh.triangles = o3d.utility.Vector3iVector(model.faces)
+            mesh.compute_vertex_normals()
+            mesh.paint_uniform_color([0.3, 0.3, 0.3])
+
+            geometry = [mesh]
+            if plot_joints:
+                joints_pcl = o3d.geometry.PointCloud()
+                joints_pcl.points = o3d.utility.Vector3dVector(joints)
+                joints_pcl.paint_uniform_color([0.7, 0.3, 0.3])
+                geometry.append(joints_pcl)
+
+            o3d.visualization.draw_geometries(geometry)
+        else:
+            raise ValueError(
+                'Unknown plotting_module: {}'.format(plotting_module))
 
 
 if __name__ == '__main__':
@@ -137,8 +169,8 @@ if __name__ == '__main__':
                         help='Number of expression coefficients.')
     parser.add_argument('--plotting-module', type=str, default='pyrender',
                         dest='plotting_module',
-                        choices=['pyrender', 'matplotlib', 'open3d'],
-                        help='The module to use for plotting the result')
+                        choices=['pyrender', 'matplotlib', 'open3d', 'none'],
+                        help='The module to use for plotting the result (use "none" to skip visualization)')
     parser.add_argument('--ext', type=str, default='npz',
                         help='Which extension to use for loading')
     parser.add_argument('--plot-joints', default=False,
@@ -155,6 +187,8 @@ if __name__ == '__main__':
     parser.add_argument('--use-face-contour', default=False,
                         type=lambda arg: arg.lower() in ['true', '1'],
                         help='Compute the contour of the face')
+    parser.add_argument('--output', type=str, default=None,
+                        help='Output path for .glb file (e.g., model.glb)')
 
     args = parser.parse_args()
 
@@ -169,6 +203,7 @@ if __name__ == '__main__':
     num_expression_coeffs = args.num_expression_coeffs
     sample_shape = args.sample_shape
     sample_expression = args.sample_expression
+    output_path = args.output
 
     main(model_folder, model_type, ext=ext,
          gender=gender, plot_joints=plot_joints,
@@ -177,4 +212,9 @@ if __name__ == '__main__':
          sample_shape=sample_shape,
          sample_expression=sample_expression,
          plotting_module=plotting_module,
-         use_face_contour=use_face_contour)
+         use_face_contour=use_face_contour,
+         output_path=output_path)
+
+
+# paste this to run the script
+# python examples/demo.py --model-folder "../../smpl_edit_experiment_v1/models" --gender="neutral" --output model6.glb --plotting-module none
