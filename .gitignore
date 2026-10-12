@@ -107,3 +107,5 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+# JetBrains IDEs
+.idea

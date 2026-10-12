@@ -15,9 +15,24 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import print_function
+
+# These top-level imports and shims are required to fix Chumpy with Python 3.x
+import inspect
+
+if not hasattr(inspect, 'getargspec'):
+    inspect.getargspec = inspect.getfullargspec
+
+import numpy as np
+
+for _name, _val in [('bool', bool), ('int', int), ('float', float),
+                    ('complex', complex), ('object', object),
+                    ('unicode', str), ('str', str)]:
+    if not hasattr(np, _name):
+        setattr(np, _name, _val)
+
 
 import argparse
 import os
@@ -25,16 +40,15 @@ import os.path as osp
 
 import pickle
 
-from tqdm import tqdm
 import numpy as np
 
 
 def clean_fn(fn, output_folder='output'):
     with open(fn, 'rb') as body_file:
-        body_data = pickle.load(body_file)
+        body_data = pickle.load(body_file, encoding='latin1')
 
     output_dict = {}
-    for key, data in body_data.iteritems():
+    for key, data in body_data.items():
         if 'chumpy' in str(type(data)):
             output_dict[key] = np.array(data)
         else:

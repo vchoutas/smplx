@@ -1,6 +1,6 @@
 ## Removing Chumpy objects
 
-In a Python 2 virtual environment with [Chumpy](https://github.com/mattloper/chumpy) installed run the following to remove any Chumpy objects from the model data:
+Run the following to remove any Chumpy objects from the model data:
 
 ```bash
 python tools/clean_ch.py --input-models path-to-models/*.pkl --output-folder output-folder
